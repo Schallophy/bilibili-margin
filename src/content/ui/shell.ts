@@ -9,6 +9,8 @@ import { createLaterDrawer } from './drawer';
 import { createFavorites } from './favorites';
 import { attachPreview } from './preview';
 import type { SunMoon } from './sun-moon';
+import { FilterRuntime } from '../filter-runtime';
+import { reducedMotion } from '../motion';
 import css from '../styles.css?inline';
 import pagesCss from '../takeover.css?inline';
 
@@ -22,6 +24,7 @@ export class PageShell {
   readonly app: HTMLElement;
   readonly main: HTMLElement;
   readonly head: Header;
+  readonly filter: FilterRuntime;
   private sunMoon: SunMoon;
   private bg = new BackgroundLayer();
   private panel: SettingsPanel;
@@ -32,11 +35,14 @@ export class PageShell {
     this.host = h('div', { id: 'margin-root' });
     this.root = this.host.attachShadow({ mode: 'open' });
     this.root.append(h('style', {}, css + '\n' + pagesCss));
+    this.filter = new FilterRuntime(settings);
     this.panel = createSettingsPanel(() => this.settings, () => this.bg.shader);
-    const fav = createFavorites((g) => attachPreview(g, () => this.settings.hoverPreview));
-    const later = createLaterDrawer(() => this.app);
+    const fav = createFavorites((g) => attachPreview(g, () => this.settings.hoverPreview), undefined, this.filter);
+    const later = createLaterDrawer(() => this.app, this.filter);
     this.head = createHeader({
       onTheme: () => this.toggleTheme(),
+      msgRemind: () => this.settings.msgRemind,
+      filter: this.filter,
       tabs: [
         ...SITE_LINKS,
         'separator',
@@ -78,7 +84,9 @@ export class PageShell {
   update(s: Settings): void {
     const prev = this.settings;
     this.settings = s;
-    if (prev.theme !== s.theme || prev.palette !== s.palette || JSON.stringify(prev.bg) !== JSON.stringify(s.bg)) this.applyTheme();
+    this.filter.update(s);
+    if (prev.reduceMotion !== s.reduceMotion || prev.theme !== s.theme || prev.palette !== s.palette || JSON.stringify(prev.bg) !== JSON.stringify(s.bg)) this.applyTheme();
+    this.head.setMsgRemind(s.msgRemind);
     this.panel.sync(s);
   }
 
@@ -92,14 +100,15 @@ export class PageShell {
     this.app.dataset.theme = t;
     this.app.dataset.palette = this.settings.palette;
     this.app.dataset.bg = this.settings.bg.mode;
+    this.app.classList.toggle('margin-reduce', this.settings.reduceMotion);
     document.documentElement.style.background = t === 'dark' ? '#111' : '#f5f4f1';
-    this.sunMoon.set(t);
+    this.sunMoon.set(t, !reducedMotion());
     this.bg.apply(this.settings.bg, t, this.settings.palette).then(() => this.panel.sync(this.settings));
   }
 
   private async toggleTheme(): Promise<void> {
     const next = this.resolved() === 'dark' ? 'light' : 'dark';
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (!reducedMotion()) {
       this.app.classList.add('theme-fading');
       this.app.style.setProperty('--fade', `${this.sunMoon.duration}ms`);
       clearTimeout(this.fadeTimer);

@@ -5,7 +5,7 @@ import { getJSON } from './http';
 export interface Dyn {
   id: string; type: string; author: string; face: string; mid: number; ts: number; time: string;
   text: string; title?: string;
-  video?: { bvid: string; title: string; cover: string; dur: string; play: string; desc: string };
+  video?: { bvid: string; title: string; cover: string; dur: string; play: string; desc: string; ad?: boolean };
   pics: string[];
   article?: { title: string; cover: string; desc: string; url: string };
   /** 直播（开播提醒 LIVE_RCMD / 直播间分享 LIVE），#4 */
@@ -33,7 +33,8 @@ export function toDyn(it: any): Dyn | null {
   };
   if (major.archive) {
     const v = major.archive;
-    out.video = { bvid: v.bvid, title: v.title, cover: https(v.cover), dur: v.duration_text ?? '', play: v.stat?.play ?? '', desc: v.desc ?? '' };
+    const ad = v.is_ad === true || Boolean(v.ad_info) || Boolean(v.business_info) || undefined;
+    out.video = { bvid: v.bvid, title: v.title, cover: https(v.cover), dur: v.duration_text ?? '', play: v.stat?.play ?? '', desc: v.desc ?? '', ad };
     out.url = `https://www.bilibili.com/video/${v.bvid}`;
   }
   if (opus?.pics) out.pics = opus.pics.map((p: any) => https(p.url));

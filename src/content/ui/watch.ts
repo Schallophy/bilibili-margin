@@ -21,6 +21,8 @@ import css from '../styles.css?inline';
 import { BackgroundLayer } from '../bg/background';
 import { startTriple } from './triple';
 import { startWatchCard } from './watch-card';
+import { reducedMotion } from '../motion';
+import { FilterRuntime } from '../filter-runtime';
 
 export type SkinKind = 'watch' | 'search' | 'page' | 'live';
 
@@ -31,6 +33,7 @@ export type SkinKind = 'watch' | 'search' | 'page' | 'live';
  */
 export class WatchSkin {
   readonly host: HTMLElement;
+  readonly filter: FilterRuntime;
   private bg = new BackgroundLayer();
   private bgApp: HTMLElement;
   private app: HTMLElement;
@@ -38,6 +41,8 @@ export class WatchSkin {
   private panel: SettingsPanel;
   private fav: Sheet;
   private screenSync?: () => void;
+  private autoDone = '';
+  private wideDone = '';
   private media = matchMedia('(prefers-color-scheme: dark)');
 
   constructor(private settings: Settings, private kind: SkinKind = 'watch') {
@@ -60,11 +65,12 @@ export class WatchSkin {
     // 搜索页本身有大号搜索框，顶栏那个就不再重复（Ctrl+K / / 仍可唤出命令面板）
     if (kind === 'search') root.append(h('style', {}, '.top .search { visibility: hidden; pointer-events: none; }'));
 
+    this.filter = new FilterRuntime(settings);
     this.panel = createSettingsPanel(() => this.settings, () => this.bg.shader);
-    this.fav = createFavorites((g) => attachPreview(g, () => this.settings.hoverPreview));
+    this.fav = createFavorites((g) => attachPreview(g, () => this.settings.hoverPreview), undefined, this.filter);
     const open = (u: string) => window.open(u, '_blank', 'noopener');
     const clickSel = (sel: string) => (document.querySelector(sel) as HTMLElement | null)?.click();
-    const later = createLaterDrawer(() => this.app);
+    const later = createLaterDrawer(() => this.app, this.filter);
     const watchCmds: Command[] = isWatch ? [
       { id: 'w-top', title: '回到顶部', cat: '操作', icon: ICONS.top, run: () => scrollTo({ top: 0, behavior: 'smooth' }) },
       { id: 'w-comments', title: '看评论', cat: '跳转', icon: ICONS.message, keys: ['评论'], run: () => document.querySelector('#commentapp, bili-comments, .comment-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
@@ -87,6 +93,8 @@ export class WatchSkin {
     this.head = createHeader({
       onTheme: () => this.toggleTheme(),
       onSearch: (q) => palette.open(q),
+      msgRemind: () => this.settings.msgRemind,
+      filter: this.filter,
       tabs: [
         ...SITE_LINKS,
         'separator',
@@ -118,14 +126,22 @@ export class WatchSkin {
 
     this.applyTheme(false);
     this.media.addEventListener('change', () => this.applyTheme(false));
-    if (isWatch) { this.watchScreen(); startTriple(); podProgress(); startWatchCard(); }
+    // 搜索页没有播放器；普通视频、番剧、列表等换皮页都运行播放器相关设置
+    if (kind !== 'search') this.watchScreen();
+    if (isWatch) { startTriple(); podProgress(); startWatchCard(); }
   }
 
   update(s: Settings): void {
     const prev = this.settings;
     this.settings = s;
-    if (prev.webScroll !== s.webScroll) this.screenSync?.();
-    if (prev.theme !== s.theme || JSON.stringify(prev.bg) !== JSON.stringify(s.bg)) this.applyTheme(false);
+    this.filter.update(s);
+    if (prev.reduceMotion !== s.reduceMotion || prev.theme !== s.theme || JSON.stringify(prev.bg) !== JSON.stringify(s.bg)) this.applyTheme(false);
+    if (prev.webScroll !== s.webScroll || prev.wide !== s.wide || prev.autoWeb !== s.autoWeb) {
+      this.autoDone = '';
+      this.wideDone = '';
+      this.screenSync?.();
+    }
+    this.head.setMsgRemind(s.msgRemind);
     this.panel.sync(s);
   }
 
@@ -139,7 +155,9 @@ export class WatchSkin {
     document.documentElement.dataset.marginTheme = t;
     this.app.dataset.theme = t;
     this.bgApp.dataset.theme = t;
-    this.head.sunMoon.set(t, animate);
+    this.app.classList.toggle('margin-reduce', this.settings.reduceMotion);
+    this.bgApp.classList.toggle('margin-reduce', this.settings.reduceMotion);
+    this.head.sunMoon.set(t, animate && !reducedMotion());
     const mode = this.settings.bg.mode;
     document.documentElement.classList.toggle('margin-has-bg', mode !== 'off');
     this.bg.apply(this.settings.bg, t, this.settings.palette).then(() => {
@@ -157,9 +175,24 @@ export class WatchSkin {
 
   /** 网页全屏 / 全屏时收起顶栏，不挡播放器 */
   private watchScreen(): void {
-    const sync = () => {
-      const p = document.querySelector('.bpx-player-container');
-      const screen = p?.getAttribute('data-screen') ?? 'normal';
+    // B 站有两代播放器：新版的 .bpx-player-container[data-screen]，旧版依赖包裹层 class
+    const player = () => document.querySelector<HTMLElement>('.bpx-player-container, #bilibili-player, #bilibili-player-wrap, .bilibili-player-wrap');
+    const playerScreen = (): string => {
+      const bpx = document.querySelector('.bpx-player-container');
+      if (bpx) return bpx.getAttribute('data-screen') ?? 'normal';
+      const wrap = document.querySelector<HTMLElement>('#bilibili-player-wrap, .bilibili-player-wrap, .player-wrap');
+      if (wrap) {
+        if (wrap.classList.contains('bilibili-player-webscreen') || wrap.classList.contains('mode-webscreen')) return 'web';
+        if (wrap.classList.contains('bilibili-player-widescreen') || wrap.classList.contains('mode-widescreen')) return 'wide';
+      }
+      return 'normal';
+    };
+    let lastScreen = '';
+    const sync = (force = false) => {
+      const screen = playerScreen();
+      // 状态没变且不在全屏时不做重复重排；设置变化时 force 强制重算
+      if (!force && screen === lastScreen && !document.fullscreenElement) return;
+      lastScreen = screen;
       const hide = screen === 'web' || screen === 'full' || !!document.fullscreenElement;
       this.host.toggleAttribute('hidden', hide);
       webScroll(screen === 'web' && !document.fullscreenElement && this.settings.webScroll);
@@ -171,7 +204,7 @@ export class WatchSkin {
     let ro: ResizeObserver | null = null;
     const de = document.documentElement;
     const place = () => {
-      const pl = document.querySelector('.bpx-player-container'), rc = document.querySelector<HTMLElement>('.right-container');
+      const pl = player(), rc = document.querySelector<HTMLElement>('.right-container');
       if (!pl || !rc) return;
       const prev = parseFloat(getComputedStyle(rc).paddingTop) || 0;
       const top = rc.getBoundingClientRect().top + prev;
@@ -183,7 +216,7 @@ export class WatchSkin {
       if (on) {
         requestAnimationFrame(place);
         if (!ro) { ro = new ResizeObserver(() => { if (de.classList.contains('margin-wide')) place(); }); }
-        const pl = document.querySelector('.bpx-player-container');
+        const pl = player();
         if (pl) ro.observe(pl);
       } else { ro?.disconnect(); de.style.removeProperty('--m-wide-pad'); }
     };
@@ -193,7 +226,7 @@ export class WatchSkin {
         if (de.classList.contains('margin-webscroll')) { de.classList.remove('margin-webscroll'); for (const k of ['y', 'x', 'w', 'h']) de.style.removeProperty(`--m-ws-${k}`); }
         return;
       }
-      const wrap = document.querySelector<HTMLElement>('.player-wrap');
+      const wrap = document.querySelector<HTMLElement>('.player-wrap, #bilibili-player-wrap, .bilibili-player-wrap');
       if (!wrap) return;
       const was = de.classList.contains('margin-webscroll');
       requestAnimationFrame(() => {
@@ -209,21 +242,65 @@ export class WatchSkin {
         if (!was) scrollTo({ top: 0 });
       });
     };
-    this.screenSync = sync;
+    // v0.48 网页全屏可滚动时，B 站原生「滚轮调音量」被页面滚动吃掉（B 站评论反馈）。
+    // 播放器铺满视口（还没往下滚）时：画面上滚轮 = 调音量；控制栏那一条（底部 96px）滚轮 = 往下看评论；
+    // 已经滚下去以后一律正常滚动。B 站自己处理了的话（音量已变）不重复调。
+    addEventListener('wheel', (e) => {
+      if (!de.classList.contains('margin-webscroll') || e.ctrlKey || e.deltaY === 0) return;
+      const t = e.target as Element | null;
+      if (!t?.closest?.('.bpx-player-video-area, .bpx-player-video-wrap, .bilibili-player-video-wrap')) return;
+      if (t.closest('.bpx-player-ctrl-setting-box, .bpx-player-ctrl-volume, .bpx-player-dm-wrap input')) return;
+      // 想往下看评论（已经滚下去了，或者在底部控制栏那一条）：只滚页面，不让 B 站顺手把音量也调了
+      if (scrollY > 4 || e.clientY > innerHeight - 96) { e.stopPropagation(); return; }
+      const v = document.querySelector<HTMLVideoElement>('.bpx-player-video-wrap video, .bilibili-player-video video, video');
+      if (!v) return;
+      e.preventDefault();
+      const v0 = v.volume, m0 = v.muted, up = e.deltaY < 0;
+      setTimeout(() => {
+        if (v.volume !== v0 || v.muted !== m0) return;
+        const n = Math.min(1, Math.max(0, Math.round((v0 + (up ? 0.1 : -0.1)) * 10) / 10));
+        if (up && v.muted) v.muted = false;
+        v.volume = n;
+        volTip(n);
+      }, 0);
+    }, { passive: false, capture: true });
+    let tipEl: HTMLElement | null = null, tipT = 0;
+    const volTip = (n: number) => {
+      const host = document.querySelector<HTMLElement>('.bpx-player-video-area') ?? document.body;
+      if (!tipEl || !tipEl.isConnected) {
+        tipEl = document.createElement('div');
+        tipEl.className = 'm-voltip';
+        host.appendChild(tipEl);
+      }
+      tipEl.textContent = `音量 ${Math.round(n * 100)}%`;
+      tipEl.classList.add('on');
+      clearTimeout(tipT); tipT = window.setTimeout(() => tipEl?.classList.remove('on'), 900);
+    };
+    this.screenSync = () => sync(true);
     addEventListener('resize', () => { if (de.classList.contains('margin-webscroll')) webScroll(true); });
-    new MutationObserver(sync).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['data-screen'] });
-    // v0.43 自动网页全屏：每个视频进来一次，播放器就绪后点「网页全屏」；用户自己退出后同一视频不再强开
-    let doneBv = '';
+    new MutationObserver(() => sync()).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['data-screen'] });
+    every(1000, sync); // 旧版播放器只改 class、不发 data-screen 变化，兜底轮询
+    // v0.43 自动网页全屏；v0.47 宽屏模式：每个视频进来一次，用户自己退出后同一视频不再强开
+    const keyOf = () => location.pathname.match(/BV\w+|ep\d+|ss\d+/)?.[0] ?? location.search;
+    const webBtn = () => document.querySelector<HTMLElement>('.bpx-player-ctrl-web, .bilibili-player-video-btn-webscreen, [aria-label="网页全屏"]');
+    const wideBtn = () => document.querySelector<HTMLElement>('.bpx-player-ctrl-wide, .bilibili-player-video-btn-widescreen, [aria-label="宽屏"]');
+    const video = () => document.querySelector<HTMLVideoElement>('.bpx-player-video-wrap video, .bpx-player-video-wrap bwp-video, #bilibili-player video, .bilibili-player video');
     every(800, () => {
-      if (!this.settings.autoWeb) return;
-      const bv = location.pathname.match(/BV\w+|ep\d+|ss\d+/)?.[0] ?? location.search;
-      if (bv === doneBv) return;
-      const p = document.querySelector('.bpx-player-container');
-      const btn = document.querySelector<HTMLElement>('.bpx-player-ctrl-web');
-      const v = document.querySelector<HTMLVideoElement>('.bpx-player-video-wrap video, .bpx-player-video-wrap bwp-video');
-      if (!p || !btn || !v || (v as HTMLVideoElement).readyState < 1) return;
-      doneBv = bv;
-      if ((p.getAttribute('data-screen') ?? 'normal') === 'normal' && !document.fullscreenElement) btn.click();
+      const bv = keyOf();
+      // 自动网页全屏优先；和宽屏同时开启时不再点宽屏
+      if (this.settings.autoWeb && bv !== this.autoDone) {
+        const p = player(), btn = webBtn(), v = video();
+        if (!p || !btn || !v || (v as HTMLVideoElement).readyState < 1) return;
+        this.autoDone = bv;
+        if (playerScreen() === 'normal' && !document.fullscreenElement) btn.click();
+        return;
+      }
+      if (!this.settings.wide || this.settings.autoWeb) return;
+      if (bv === this.wideDone) return;
+      const btn = wideBtn();
+      if (!btn || !player()) return;
+      this.wideDone = bv;
+      if (playerScreen() === 'normal' && !document.fullscreenElement) btn.click();
     });
     // v0.43 卡顿：视频播放时背景定格，GPU 留给解码和弹幕；暂停后接着动
     const playSync = (e: Event) => {
@@ -239,7 +316,7 @@ export class WatchSkin {
       clearTimeout(st);
       st = window.setTimeout(() => { st = 0; this.bg.hold('scroll', false); }, 160);
     }, { passive: true });
-    document.addEventListener('fullscreenchange', sync);
+    document.addEventListener('fullscreenchange', () => sync());
     sync();
   }
 }

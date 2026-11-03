@@ -10,6 +10,7 @@
  */
 import { fanSlot, hashString, paint, recipeOf, rng, type ArtPreset } from './folder-art';
 import { h, setMarkup } from './dom';
+import { reducedMotion } from '../motion';
 
 export interface GFFile { name: string; meta?: string; image?: string; art?: ArtPreset; href?: string }
 export interface GFMenuItem { label: string; onSelect?: () => void; danger?: boolean }
@@ -225,6 +226,13 @@ export function glassFolder(o: GFOptions): GlassFolderApi {
   let pointerX = 0, pointerY = 0, tracking = false;
   const write = () => {
     raf = 0;
+    if (reducedMotion()) {
+      tilt.style.transform = '';
+      shadowEl.style.transform = '';
+      specEl.style.transform = '';
+      root.querySelectorAll<HTMLElement>('.gf-art').forEach((a) => { a.style.transform = ''; });
+      return;
+    }
     if (tracking) {
       const r = root.getBoundingClientRect();
       px = ((pointerX - r.left) / r.width) * 2 - 1;
@@ -239,7 +247,7 @@ export function glassFolder(o: GFOptions): GlassFolderApi {
     specEl.style.transform = px || py ? `translate(${(px * W * 0.46).toFixed(1)}px, ${(py * FRONT_H * 0.4).toFixed(1)}px)` : '';
   };
   root.addEventListener('pointermove', (e) => {
-    if (e.pointerType === 'touch') return;
+    if (e.pointerType === 'touch' || reducedMotion()) return;
     pointerX = e.clientX; pointerY = e.clientY; tracking = true;
     if (!raf) raf = requestAnimationFrame(write);
   });

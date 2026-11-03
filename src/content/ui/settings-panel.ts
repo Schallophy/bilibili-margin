@@ -1,5 +1,5 @@
-import type { BgMode, HomeBit, Settings, ShaderId, Theme } from '../../shared/settings';
-import { BG_IMAGE_KEY, cleanFont, HOME_BITS, replaceSettings, sanitizeSettings, saveSettings } from '../../shared/settings';
+import type { BgMode, HomeBit, HomeSection, Settings, ShaderId, Theme } from '../../shared/settings';
+import { BG_IMAGE_KEY, cleanFont, HOME_BITS, HOME_SECTION_NAMES, normalizeHomeOrder, replaceSettings, sanitizeSettings, saveSettings } from '../../shared/settings';
 import { ACTIVITY_KEY, sanitizeActivity, type FpMessage } from '../../shared/activity';
 import { compressImage } from '../bg/background';
 import { SHADER_IDS, SHADER_NAMES } from '../bg/shaders';
@@ -8,6 +8,7 @@ import { block, chipInput, pillToggles, rangeSlider, row, segmented, stepSlider,
 import { fmtCount, h, icon, ICONS } from './dom';
 import { createSheet, type Sheet } from './sheet';
 import { SITE_LINKS } from './header';
+import { appPoll, appQr, appRevoke, appState } from '../api/appfeed';
 import { clearLoc, geocodeList, savedLoc, setLoc as setLocWithName } from '../api/weather';
 
 export interface SettingsPanel { sheet: Sheet; sync(s: Settings): void }
@@ -31,6 +32,7 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
   const watch = toggle(s0.watch, '其他页面重设计', (v) => save({ watch: v }));
   const preview = toggle(s0.hoverPreview, '悬停预览', (v) => save({ hoverPreview: v }));
   const intro = toggle(s0.intro, '开场动画', (v) => save({ intro: v }));
+  const reduceM = toggle(s0.reduceMotion, '减少动画', (v) => save({ reduceMotion: v }));
   const foot = toggle(s0.footprint, '足迹热力图', (v) => save({ footprint: v }));
   const wxT = toggle(s0.weather, '天气', (v) => save({ weather: v }));
   // v0.43 首页组件开关：存的是「隐藏了哪些」，界面上是「显示哪些」
@@ -50,6 +52,40 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
     const off = CARD_BITS.map(([k]) => k).filter((k) => !on.includes(k));
     return save({ homeHide: HOME_BITS.filter((b) => keep.includes(b) || off.includes(b)) });
   });
+  // 首页版块顺序（v0.47）：上移 / 下移，保存后 MarginApp 立即移动节点
+  const orderBox = h('div', { class: 'home-order' });
+  let order = normalizeHomeOrder(s0.homeOrder);
+  function paintOrder() {
+    const active = (orderBox.getRootNode() as Document | ShadowRoot).activeElement as HTMLElement | null;
+    const focusKey = active?.dataset.focus ?? '';
+    orderBox.replaceChildren(...order.map((id, i) => {
+      const name = HOME_SECTION_NAMES[id];
+      const up = h('button', {
+        type: 'button', class: 'home-order-btn', 'aria-label': `上移${name}`, title: '上移',
+        disabled: i === 0, 'data-focus': `${id}:up`,
+      }, '↑');
+      const down = h('button', {
+        type: 'button', class: 'home-order-btn', 'aria-label': `下移${name}`, title: '下移',
+        disabled: i === order.length - 1, 'data-focus': `${id}:down`,
+      }, '↓');
+      up.addEventListener('click', () => move(id, -1));
+      down.addEventListener('click', () => move(id, 1));
+      return h('div', { class: 'home-order-row', 'data-section': id },
+        h('span', { class: 'home-order-name' }, name),
+        h('span', { class: 'home-order-btns' }, up, down));
+    }));
+    if (focusKey) orderBox.querySelector<HTMLElement>(`[data-focus="${focusKey}"]`)?.focus();
+  }
+  function move(id: HomeSection, dir: -1 | 1) {
+    const i = order.indexOf(id), j = i + dir;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    const next = [...order];
+    [next[i], next[j]] = [next[j], next[i]];
+    order = next;
+    paintOrder();
+    save({ homeOrder: next });
+  }
+  paintOrder();
   // 天气城市（#3）：输入后列出候选，点一个就固定；「自动」回到 IP 定位
   const cityIn = h('input', { class: 'city-in', type: 'search', placeholder: '自动定位', 'aria-label': '天气城市', autocomplete: 'off' }) as HTMLInputElement;
   const cityList = h('ul', { class: 'city-list', role: 'listbox', 'aria-label': '城市候选', hidden: '' });
@@ -159,13 +195,16 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
   } }, '测速');
   const idD = toggle(s0.idDrag, '账号卡片可拖拽', (v) => save({ idDrag: v }));
   const favD = toggle(s0.favDirect, '收藏夹直接展开', (v) => save({ favDirect: v }));
+  const wideT = toggle(s0.wide, '宽屏模式', (v) => save({ wide: v }));
   const autoW = toggle(s0.autoWeb, '自动网页全屏', (v) => save({ autoWeb: v }));
   const webS = toggle(s0.webScroll, '网页全屏可滚动', (v) => save({ webScroll: v }));
+  const msgT = toggle(s0.msgRemind, '消息提醒', (v) => save({ msgRemind: v }));
 
   const kw = chipInput(s0.filters.keywords, '输入关键词，回车添加；/正则/ 也可以', (v) => save({ filters: { ...get().filters, keywords: v } }));
   const ups = chipInput(s0.filters.ups, 'UP 主昵称或 MID', (v) => save({ filters: { ...get().filters, ups: v } }));
   const views = stepSlider([0, 1000, 10000, 50000, 100000, 1000000], s0.filters.minViews, (n) => (n ? `≥ ${fmtCount(n)}` : '不限'), (v) => save({ filters: { ...get().filters, minViews: v } }), '最低播放量');
   const dur = segmented<string>([['0', '不限'], ['60', '1 分钟'], ['180', '3 分钟'], ['600', '10 分钟']], String(s0.filters.minDuration), (v) => save({ filters: { ...get().filters, minDuration: Number(v) } }));
+  const adsT = toggle(s0.hideAds, '隐藏广告', (v) => save({ hideAds: v }));
 
   const mode = segmented<BgMode>([['random', '随机'], ['fixed', '固定'], ['image', '图片'], ['off', '关闭']], s0.bg.mode, (v) => {
     if (v === 'image') { file.click(); return; }
@@ -207,6 +246,24 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
     b.dataset.v = id;
     swatches.append(b);
   }
+  // 随机范围：点掉不想随机到的样式（至少留一个）
+  const poolBox = h('div', { class: 'pool-chips', role: 'group', 'aria-label': '随机范围' });
+  let poolCur: ShaderId[] | null = null;  // 连点时 get() 可能还没收到上一次保存，先用本地值
+  const poolOf = () => { const p = poolCur ?? get().bg.pool ?? []; return p.length ? p : SHADER_IDS; };
+  const paintPool = () => { const p = poolOf(); poolBox.querySelectorAll<HTMLElement>('button').forEach((b) => b.setAttribute('aria-pressed', String(p.includes(b.dataset.v as ShaderId)))); };
+  for (const id of SHADER_IDS) {
+    const b = h('button', { type: 'button', class: 'pool-chip', onclick: () => {
+      const p = poolOf();
+      const next = p.includes(id) ? p.filter((x) => x !== id) : [...p, id];
+      if (!next.length) return;
+      poolCur = next.length === SHADER_IDS.length ? [] : next;
+      save({ bg: { ...get().bg, pool: poolCur } });
+      paintPool();
+    } }, SHADER_NAMES[id]);
+    b.dataset.v = id;
+    poolBox.append(b);
+  }
+  paintPool();
   const intensity = rangeSlider(s0.bg.intensity, (n) => `${Math.round(n * 100)}%`, (v) => save({ bg: { ...get().bg, intensity: v } }), '背景强度');
   const file = h('input', { type: 'file', accept: 'image/*', hidden: true, 'aria-label': '选择背景图片' });
   file.addEventListener('change', async () => {
@@ -255,6 +312,57 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
   const importBtn = h('button', { type: 'button', class: 'ghost small', onclick: () => json.click() }, h('span', {}, '导入'));
 
 
+  /* ---------- 实验功能：App 推荐流（v0.48） ---------- */
+  const appT = toggle(s0.appFeed, 'App 推荐流', (v) => save({ appFeed: v }));
+  const rankT = toggle(s0.rerank, 'X 式重排', (v) => save({ rerank: v }));
+  const appStat = h('small', { class: 'af-stat' }, '…');
+  const appQrBox = h('div', { class: 'af-qr', hidden: true });
+  const appQrNote = h('small', { class: 'af-note' });
+  const appBtn = h('button', { type: 'button', class: 'ghost small' }, h('span', {}, '扫码授权')) as HTMLButtonElement;
+  const appOff = h('button', { type: 'button', class: 'ghost small', hidden: true }, h('span', {}, '取消授权')) as HTMLButtonElement;
+  let pollT = 0;
+  let authed = false;
+  const stopPoll = () => { window.clearTimeout(pollT); pollT = 0; };
+  const paintApp = async () => {
+    const st = await appState().catch(() => null);
+    authed = !!st?.authed;
+    appStat.textContent = authed ? `已授权 · UID ${st!.mid}${st!.exp ? ` · ${new Date(st!.exp * 1000).toLocaleDateString()} 到期` : ''}` : '未授权：推荐来自 App，但不是你的个性化推荐';
+    appBtn.querySelector('span')!.textContent = authed ? '重新扫码' : '扫码授权';
+    appOff.hidden = !authed;
+    drawers.forEach((f) => f());
+  };
+  const drawQr = (text: string) => import('qrcode-generator').then(({ default: qrcode }) => {
+    const q = qrcode(0, 'M'); q.addData(text); q.make();
+    const n = q.getModuleCount();
+    let d = '';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`;
+    const svg = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 ${n + 4} ${n + 4}" shape-rendering="crispEdges" role="img" aria-label="授权二维码"><rect x="-2" y="-2" width="${n + 4}" height="${n + 4}" fill="#fff"/><path d="${d}" fill="#111"/></svg>`, 'image/svg+xml').documentElement;
+    appQrBox.replaceChildren(document.importNode(svg, true));
+  });
+  appBtn.onclick = async () => {
+    stopPoll();
+    appBtn.disabled = true;
+    const r = await appQr().catch((e) => ({ ok: false, error: String(e) } as { ok: boolean; url?: string; code?: string; error?: string }));
+    appBtn.disabled = false;
+    if (!r.ok || !r.url || !r.code) { say(`拿不到二维码：${r.error || '网络错误'}`); return; }
+    await drawQr(r.url);
+    appQrBox.hidden = false;
+    appQrNote.textContent = '用手机 B 站 App 扫一扫，在手机上点「确认登录」';
+    const code = r.code;
+    const started = Date.now();
+    const tick = async () => {
+      if (!sheet.el.isConnected || Date.now() - started > 180_000) { appQrBox.hidden = true; appQrNote.textContent = '二维码已过期，再点一次「扫码授权」'; return; }
+      const p = await appPoll(code).catch(() => null);
+      if (p?.state === 'done') { appQrBox.hidden = true; appQrNote.textContent = ''; say('授权好了，推荐换成你手机上的那套'); if (!get().appFeed) await save({ appFeed: true }); await paintApp(); return; }
+      if (p?.state === 'expired') { appQrBox.hidden = true; appQrNote.textContent = '二维码已过期，再点一次「扫码授权」'; return; }
+      if (p?.state === 'scanned') appQrNote.textContent = '已扫码，请在手机上确认';
+      pollT = window.setTimeout(tick, 2000);
+    };
+    pollT = window.setTimeout(tick, 2000);
+  };
+  appOff.onclick = async () => { stopPoll(); await appRevoke(); say('已取消授权，本机的授权凭证已删除'); await paintApp(); };
+  paintApp();
+
   /**
    * 抽屉（v0.47.4，用户：非必要的设置收进抽屉）：标题行 + 当前值摘要 + 箭头，点开后高度用 grid 0fr→1fr 过渡，
    * 不读布局；收起时内容 inert，不进 Tab 顺序。参考 21st「Accordion」(coss.com) 与「Disclosure」(hero_ui) 的结构与键盘行为，原生重写。
@@ -279,6 +387,7 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
     h('section', { class: 'group' }, h('h3', {}, '外观'),
       block('明暗', null, theme),
       row('封面悬停预览', '鼠标停留半秒后静音播放', preview),
+      row('减少动画', '暂停背景、天气和悬停动画，并减少界面过渡；系统减少动态效果始终生效', reduceM),
       row('其他页面重设计', '播放页、搜索页、空间、动态等，只换外观不改功能', watch),
       drawer('字体与缩放', () => { const st = get(); return [st.titleFont === 'sans' ? '无衬线标题' : '衬线标题', st.bodyFont || '', st.zoom !== 100 ? `${st.zoom}%` : ''].filter(Boolean).join(' · '); },
         block('标题字体', '页面标题和大号文字用衬线（宋体）还是无衬线（黑体）', fontS),
@@ -295,10 +404,13 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
       drawer('顶栏入口', () => { const n = get().headHide.length; return n ? `已隐藏 ${n} 个` : '全部显示'; },
         h('p', { class: 'sd-note' }, '关掉的入口不在顶栏显示；B 站入口可以用箭头调顺序。「设置」始终保留'), headList, h('div', { class: 'hl-foot' }, headReset))),
     h('section', { class: 'group' }, h('h3', {}, '播放页'),
-      row('自动网页全屏', '打开视频后直接铺满浏览器窗口，按 Esc 退出', autoW),
+      row('宽屏模式', '有播放器时自动进入宽屏；番剧、列表和稍后再看等页面同样生效；和自动网页全屏同时开启时优先网页全屏', wideT),
+      row('自动网页全屏', '有播放器的页面打开后自动铺满浏览器窗口，按 Esc 退出', autoW),
       row('网页全屏时可滚动', '网页全屏下往下滚就能看评论，播放器跟着滚走', webS),
       drawer('视频 CDN 节点', () => CDNS.find(([x]) => x === get().cdn)?.[1] ?? 'B 站默认',
         h('p', { class: 'sd-note' }, '卡顿或加载慢时换一个节点试试；测的是连接延迟，数字越小越好。新打开的视频生效'), cdnList, h('div', { class: 'hl-foot' }, cdnTest))),
+    h('section', { class: 'group' }, h('h3', {}, '通知'),
+      row('消息提醒', '关闭后顶栏不再显示消息未读数，动态角标不受影响', msgT)),
     h('section', { class: 'group' }, h('h3', {}, '首页组件'),
       row('搜索框', '关掉后用顶栏的小搜索框', searchT),
       row('日期栏', '推荐上方的日期和「For You」', dateT),
@@ -307,19 +419,29 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
       row('天气', '关掉后不再请求天气和城市定位', wxT),
       drawer('天气城市与卡片信息', () => { const l = savedLoc(); return l?.manual ? l.name : '自动定位'; },
         block('天气城市', 'IP 定位不准时手动选一个；留空 = 自动定位', cityBox),
-        block('卡片信息', '首页视频卡片下面显示哪些，点一下开关', cardBits))),
+        block('卡片信息', '首页视频卡片下面显示哪些，点一下开关', cardBits)),
+      block('版块顺序', '上移 / 下移调整首页版块；修改后立即生效', orderBox)),
     h('section', { class: 'group' }, h('h3', {}, '背景'),
       block('模式', '随机：每次打开换一款，不连续重复', mode),
       block('样式', null, swatches),
+      drawer('随机范围', () => { const n = get().bg.pool?.length ?? 0; return n ? `${n} / ${SHADER_IDS.length} 款` : '全部'; },
+        h('p', { class: 'sd-note' }, '随机模式只在点亮的样式里挑；太花的点掉就不会再随机到'), poolBox),
       drawer('强度与自定义图片', () => '',
         block('强度', null, intensity),
         h('div', { class: 'row' }, h('div', { class: 'row-label' }, h('span', {}, '自定义图片'), h('small', {}, '压缩后只保存在本机')), upload, file))),
-    h('section', { class: 'group' }, h('h3', {}, '推荐过滤'),
-      block('屏蔽关键词', '首页标题、动态页正文包含即隐藏', kw),
+    h('section', { class: 'group' }, h('h3', {}, '内容过滤'),
+      block('屏蔽关键词', '标题包含即隐藏（首页、搜索、播放页推荐、动态等全站生效）', kw),
       block('屏蔽 UP 主', '卡片右上角也能一键屏蔽', ups),
       drawer('播放量与时长', () => '',
         block('最低播放量', null, views),
-        block('最短时长', null, dur))),
+        block('最短时长', null, dur)),
+      row('隐藏广告', '隐藏播放页、搜索页、热门排行和番剧页的推广内容', adsT)),
+    h('section', { class: 'group' }, h('h3', {}, '实验功能'),
+      row('App 推荐流', '首页「推荐」改用手机 App 的推荐；关掉就是网页版原来的推荐', appT),
+      drawer('App 授权', () => (authed ? '已授权' : '未授权'),
+        h('p', { class: 'sd-note' }, '用 B 站 App 扫一次码，推荐就和你手机上一样。授权凭证只存在本机，随时可以取消'),
+        h('div', { class: 'af-row' }, appStat, h('div', { class: 'data-acts' }, appBtn, appOff)), appQrBox, appQrNote),
+      row('X 式重排', '按你的观看历史重新排：常看完的 UP 往前，秒退和「不感兴趣」的往后，混入关注的人 48 小时内的新稿，看过的不再出现。只在本机计算，可和 App 推荐流一起用', rankT)),
     h('section', { class: 'group' }, h('h3', {}, '数据'),
       h('div', { class: 'row' }, h('div', { class: 'row-label' }, h('span', {}, '备份与迁移'), h('small', {}, '设置和足迹导出成 JSON 文件；不含自定义背景图片')),
         h('div', { class: 'data-acts' }, exportBtn, importBtn), json)),
@@ -328,10 +450,15 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
   return {
     sheet,
     sync(s) {
+      poolCur = null;
       drawers.forEach((f) => f());
+      paintPool();
       theme.set(s.theme);
       preview.setAttribute('aria-checked', String(s.hoverPreview));
       intro.setAttribute('aria-checked', String(s.intro));
+      reduceM.setAttribute('aria-checked', String(s.reduceMotion));
+      appT.setAttribute('aria-checked', String(s.appFeed));
+      rankT.setAttribute('aria-checked', String(s.rerank));
       watch.setAttribute('aria-checked', String(s.watch));
       foot.setAttribute('aria-checked', String(s.footprint));
       wxT.setAttribute('aria-checked', String(s.weather));
@@ -339,9 +466,14 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
       dateT.setAttribute('aria-checked', String(!s.homeHide.includes('date')));
       refreshT.setAttribute('aria-checked', String(!s.homeHide.includes('refresh')));
       cardBits.set(shownCard(s.homeHide));
+      order = normalizeHomeOrder(s.homeOrder);
+      paintOrder();
       favD.setAttribute('aria-checked', String(s.favDirect));
+      wideT.setAttribute('aria-checked', String(s.wide));
       autoW.setAttribute('aria-checked', String(s.autoWeb));
       webS.setAttribute('aria-checked', String(s.webScroll));
+      msgT.setAttribute('aria-checked', String(s.msgRemind));
+      adsT.setAttribute('aria-checked', String(s.hideAds));
       cols.set(String(s.cols));
       fontS.set(s.titleFont);
       monoT.setAttribute('aria-checked', String(s.monoNum));

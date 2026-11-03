@@ -1,4 +1,5 @@
 import { h, icon } from './dom';
+import { reducedMotion } from '../motion';
 
 export interface TabSpec {
   title: string;
@@ -35,7 +36,6 @@ export function createExpandableTabs(items: TabItem[], onChange?: (i: number | n
   let selected: number | null = null;
   let pinned: number | null = null, hoverT = 0;
   let raf = 0, until = 0, x = 0, w = 0, shown = false;
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
 
   const target = () => {
     const b = selected === null ? null : buttons[selected];
@@ -47,7 +47,7 @@ export function createExpandableTabs(items: TabItem[], onChange?: (i: number | n
   const follow = (t: number) => {
     const g = target();
     if (g) {
-      const k = reduce.matches ? 1 : 0.2;
+      const k = reducedMotion() ? 1 : 0.2;
       x += (g.x - x) * k; w += (g.w - w) * k;
       paint();
     }
@@ -65,7 +65,7 @@ export function createExpandableTabs(items: TabItem[], onChange?: (i: number | n
       const g = target();
       if (!shown && g) { x = g.x; w = g.w; paint(); }
       thumb.setAttribute('data-on', '');
-      if (shown && prev !== null && !reduce.matches) {
+      if (shown && prev !== null && !reducedMotion()) {
         thumb.animate([{ scale: '1 1' }, { scale: '1.18 1.12', offset: 0.45 }, { scale: '1 1' }], { duration: 520, easing: 'cubic-bezier(.3, 0, .2, 1)' });
       }
       shown = true;
