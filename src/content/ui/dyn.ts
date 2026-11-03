@@ -5,6 +5,8 @@ import { openLightbox } from './lightbox';
 
 const img = (src: string, w: number, hgt?: number) => h('img', { src: src ? `${src}@${w}w${hgt ? `_${hgt}h_1c` : ''}.webp` : '', alt: '', loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' });
 const ext = { target: '_blank', rel: 'noopener' };
+/** 动态卡 → 原始数据；屏蔽词变化时重新判断用 */
+export const dynData = new WeakMap<Element, Dyn>();
 
 /** 动态卡：杂志式单栏。日期眉标 + 正文 + 媒体（视频横卡 / 图片网格 / 专栏）+ 等宽统计 */
 export function dynCard(d: Dyn, nested = false, withAuthor = false): HTMLElement {
@@ -69,7 +71,7 @@ export function dynCard(d: Dyn, nested = false, withAuthor = false): HTMLElement
       h('a', { class: 'dy-by-name', href: `https://space.bilibili.com/${d.mid}`, ...ext }, d.author),
       h('div', { class: 'dy-eyebrow' }, h('span', {}, d.ts ? fmtAgo(d.ts) : d.time), h('span', { class: 'dy-kind' }, kindLabel(d)))),
     open()) : null;
-  return clickable(h('article', { class: withAuthor ? 'dy with-by' : 'dy' },
+  const el = clickable(h('article', { class: withAuthor ? 'dy with-by' : 'dy' },
     by ?? h('div', { class: 'dy-eyebrow' },
       h('span', {}, d.ts ? fmtAgo(d.ts) : d.time),
       h('span', { class: 'dy-kind' }, kindLabel(d)),
@@ -79,6 +81,8 @@ export function dynCard(d: Dyn, nested = false, withAuthor = false): HTMLElement
       h('span', {}, `转发 ${fmtCount(d.stat.forward)}`),
       h('span', {}, `评论 ${fmtCount(d.stat.comment)}`),
       h('span', {}, `赞 ${fmtCount(d.stat.like)}`))), d.url);
+  dynData.set(el, d);
+  return el;
 }
 
 /**

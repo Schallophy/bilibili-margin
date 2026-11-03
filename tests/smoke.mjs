@@ -78,6 +78,8 @@ for (const theme of THEMES) {
   if (!sw) sw = await ctx.waitForEvent('serviceworker', { timeout: 10_000 }).catch(() => null);
 
   const page = ctx.pages()[0] ?? await ctx.newPage();
+  let requests = [];
+  page.on('request', (r) => requests.push(r.url()));
   const cdp = await ctx.newCDPSession(page);
   await cdp.send('Runtime.enable');
   let errors = [];
@@ -107,6 +109,315 @@ for (const theme of THEMES) {
     if (!ok) failed++;
     results.push({ theme, name, ok, ms: Date.now() - t0, miss, errors });
     console.log(`${ok ? 'PASS' : 'FAIL'} ${theme.padEnd(5)} ${name.padEnd(8)} ${Date.now() - t0}ms${miss.length ? ` missing: ${miss.join(', ')}` : ''}${errors.length ? `\n      errors: ${errors.join('\n              ')}` : ''}`);
+  }
+
+  // v0.47 新功能：设置种子都通过 service worker 写入 chrome.storage.local
+  if (theme === THEMES[0] && sw) {
+    const HOME = 'https://www.bilibili.com/';
+    const WATCH = 'https://www.bilibili.com/video/BV1mdxN68E7F/';
+    const SEARCH = 'https://search.bilibili.com/all?keyword=%E6%98%A0%E9%97%B4';
+    const POPULAR = 'https://www.bilibili.com/v/popular/all';
+    const MESSAGE = 'https://message.bilibili.com/';
+    const seed = async (patch) => {
+      await sw.evaluate(async (p) => {
+        const cur = (await chrome.storage.local.get('margin:settings'))['margin:settings'] ?? {};
+        await chrome.storage.local.set({ 'margin:settings': { ...cur, ...p } });
+      }, patch);
+    };
+    const reset = async () => {
+      await sw.evaluate(async () => { await chrome.storage.local.remove('margin:settings'); });
+    };
+    const feature = async (name, fn) => {
+      const t0 = Date.now();
+      let miss = [];
+      try { miss = await fn(); } catch (e) { miss = [e.message]; }
+      const ok = !miss.length;
+      if (!ok) failed++;
+      results.push({ theme, name, ok, miss, ms: Date.now() - t0 });
+      console.log(`${ok ? 'PASS' : 'FAIL'} ${theme.padEnd(5)} ${name.padEnd(18)} ${Date.now() - t0}ms${miss.length ? ` problems: ${miss.join(', ')}` : ''}`);
+    };
+    const filterOff = { keywords: [], ups: [], minViews: 0, minDuration: 0 };
+
+    await feature('home-order', async () => {
+      await reset();
+      await seed({ homeOrder: ['feed', 'hero', 'dash', 'toolbar', 'footer'] });
+      await page.goto(HOME, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.getElementById('margin-root')?.shadowRoot?.querySelector('.grid .card:not(.sk)'), null, { timeout: 15_000 });
+      await sleep(500);
+      return page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        const main = r?.querySelector('main');
+        if (!main) return ['main'];
+        const kids = [...main.children], miss = [];
+        const idx = (sel) => { const el = main.querySelector(sel); return el ? kids.indexOf(el) : -1; };
+        const seq = ['.grid', '.hs-slot', '.dash', '.bar-mark', '.foot'];
+        for (let i = 1; i < seq.length; i++) if (idx(seq[i - 1]) < 0 || idx(seq[i]) < 0 || idx(seq[i - 1]) >= idx(seq[i])) miss.push(`${seq[i - 1]}<${seq[i]}`);
+        if (main.querySelector('.bar-mark')?.nextElementSibling !== main.querySelector('.bar')) miss.push('bar-mark+bar adjacency');
+        if (main.querySelector('.grid')?.nextElementSibling !== main.querySelector('.status')) miss.push('grid+status adjacency');
+        if (main.querySelector('.status')?.nextElementSibling !== main.querySelector('.sentinel')) miss.push('status+sentinel adjacency');
+        return miss;
+      });
+    });
+
+    await feature('settings-panel', async () => {
+      await reset();
+      await page.goto(HOME, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.getElementById('margin-root')?.shadowRoot?.querySelector('.grid .card:not(.sk)'), null, { timeout: 15_000 });
+      await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        r?.querySelector('.et-btn[aria-label="设置"]')?.click();
+      });
+      await page.waitForFunction(() => document.getElementById('margin-root')?.shadowRoot?.querySelector('.home-order-row'), null, { timeout: 8000 }).catch(() => {});
+      await sleep(300);
+      const miss = await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        const m = [];
+        const rows = [...r?.querySelectorAll('.home-order-row') ?? []];
+        if (rows.length !== 5) m.push(`order rows ${rows.length}`);
+        if (!r?.querySelector('[data-focus="hero:down"]')) m.push('hero down button missing');
+        if (![...r?.querySelectorAll('.row-label span') ?? []].some((e) => e.textContent === '减少动画')) m.push('reduce motion row missing');
+        if (![...r?.querySelectorAll('.row-label span') ?? []].some((e) => e.textContent === '宽屏模式')) m.push('wide row missing');
+        if (![...r?.querySelectorAll('.row-label span') ?? []].some((e) => e.textContent === '消息提醒')) m.push('message row missing');
+        if (![...r?.querySelectorAll('.row-label span') ?? []].some((e) => e.textContent === '隐藏广告')) m.push('ads row missing');
+        return m;
+      });
+      await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        r?.querySelector('[data-focus="hero:down"]')?.click();
+      });
+      await sleep(500);
+      miss.push(...await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        const main = r?.querySelector('main');
+        const kids = [...main?.children ?? []];
+        const idx = (sel) => { const el = main?.querySelector(sel); return el ? kids.indexOf(el) : -1; };
+        return idx('.dash') >= 0 && idx('.dash') < idx('.hs-slot') ? [] : ['order button did not move hero down'];
+      }));
+      return miss;
+    });
+
+    await feature('home-filter', async () => {
+      await reset();
+      await seed({ filters: { ...filterOff, keywords: ['芯片'] } });
+      await page.goto(HOME, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.getElementById('margin-root')?.shadowRoot?.querySelector('.grid .card:not(.sk)'), null, { timeout: 15_000 });
+      await sleep(500);
+      return page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        const titles = [...r?.querySelectorAll('.grid .card .title') ?? []].map((e) => e.textContent ?? '');
+        const miss = [];
+        if (!titles.length) miss.push('no cards');
+        if (titles.some((t) => t.includes('芯片'))) miss.push('keyword card still shown');
+        if (titles.some((t) => t.includes('广告推广视频'))) miss.push('data-level ad shown with hideAds default');
+        return miss;
+      });
+    });
+
+    await feature('extension-filters', async () => {
+      await reset();
+      await seed({ filters: { ...filterOff, keywords: ['芯片'] } });
+      const miss = [];
+      // 个人空间视频
+      await page.goto('https://space.bilibili.com/2/video', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.getElementById('margin-root')?.shadowRoot?.querySelector('.grid .card:not(.sk)'), null, { timeout: 15_000 });
+      await sleep(500);
+      miss.push(...await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        const titles = [...r?.querySelectorAll('.grid .card:not([data-margin-filtered]) .title') ?? []].map((e) => e.textContent ?? '');
+        return titles.some((t) => t.includes('芯片')) ? ['space keyword card shown'] : [];
+      }));
+      // 历史记录
+      await page.goto('https://www.bilibili.com/account/history', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.getElementById('margin-root')?.shadowRoot?.querySelector('.hi-row:not(.sk)'), null, { timeout: 15_000 });
+      await sleep(500);
+      miss.push(...await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        const titles = [...r?.querySelectorAll('.hi-row:not([data-margin-filtered]) .hi-title') ?? []].map((e) => e.textContent ?? '');
+        return titles.some((t) => t.includes('芯片')) ? ['history keyword row shown'] : [];
+      }));
+      // 动态首页的视频卡
+      await page.goto('https://t.bilibili.com/', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.getElementById('margin-root')?.shadowRoot?.querySelector('.dy'), null, { timeout: 15_000 });
+      await sleep(500);
+      miss.push(...await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        const titles = [...r?.querySelectorAll('.dy:not([data-margin-filtered]) .dy-vtitle') ?? []].map((e) => e.textContent ?? '');
+        return titles.some((t) => t.includes('芯片')) ? ['feed keyword card shown'] : [];
+      }));
+      return miss;
+    });
+
+    await feature('native-filter-search', async () => {
+      await reset();
+      await seed({ filters: { keywords: ['屏蔽词'], ups: ['坏UP'], minViews: 1000, minDuration: 0 } });
+      await page.goto(SEARCH, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('[data-margin-filtered="native"]', { state: 'attached', timeout: 12_000 }).catch(() => {});
+      await sleep(400);
+      const miss = await page.evaluate(() => {
+        const q = (k) => document.querySelector(`[data-k="${k}"]`);
+        const hidden = (el) => !!el && getComputedStyle(el).display === 'none';
+        const m = [];
+        if (!q('normal') || hidden(q('normal'))) m.push('normal hidden');
+        if (!q('keyword') || !hidden(q('keyword'))) m.push('keyword not hidden');
+        if (!q('up') || !hidden(q('up'))) m.push('UP not hidden');
+        if (!q('low') || !hidden(q('low'))) m.push('low views not hidden');
+        if (!q('missing') || hidden(q('missing'))) m.push('missing views should pass');
+        if (!q('ad') || !hidden(q('ad'))) m.push('search ad not hidden');
+        for (const k of ['normal', 'keyword', 'up', 'low', 'missing', 'ad']) if (!q(k)?.isConnected) m.push(`${k} removed from DOM`);
+        return m;
+      });
+      // 清空过滤后原生卡片恢复，且节点没有被删除
+      await seed({ filters: filterOff });
+      await page.waitForFunction(() => !document.querySelector('[data-k="keyword"]')?.hasAttribute('data-margin-filtered'), null, { timeout: 8000 }).catch(() => {});
+      await sleep(300);
+      miss.push(...await page.evaluate(() => {
+        const el = document.querySelector('[data-k="keyword"]');
+        const m = [];
+        if (!el?.isConnected) m.push('keyword removed');
+        if (el && (el.hasAttribute('data-margin-filtered') || getComputedStyle(el).display === 'none')) m.push('keyword still hidden after clear');
+        return m;
+      }));
+      return miss;
+    });
+
+    await feature('native-filter-popular', async () => {
+      await reset();
+      await seed({ filters: { ...filterOff, keywords: ['屏蔽词'] } });
+      await page.goto(POPULAR, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('[data-margin-filtered="native"]', { state: 'attached', timeout: 12_000 }).catch(() => {});
+      await sleep(300);
+      return page.evaluate(() => {
+        const q = (k) => document.querySelector(`[data-k="${k}"]`);
+        const hidden = (el) => !!el && getComputedStyle(el).display === 'none';
+        const m = [];
+        if (!q('normal') || hidden(q('normal'))) m.push('popular normal hidden');
+        if (!q('keyword') || !hidden(q('keyword'))) m.push('popular keyword not hidden');
+        return m;
+      });
+    });
+
+    await feature('ads-toggle', async () => {
+      await reset();
+      await seed({ hideAds: true });
+      await page.goto(SEARCH, { waitUntil: 'domcontentloaded' });
+      await sleep(1200);
+      const miss = await page.evaluate(() => {
+        const el = document.querySelector('[data-k="ad"]');
+        return el && getComputedStyle(el).display === 'none' ? [] : ['ad not hidden when hideAds=true'];
+      });
+      await seed({ hideAds: false });
+      await page.waitForFunction(() => {
+        const el = document.querySelector('[data-k="ad"]');
+        return !!el && getComputedStyle(el).display !== 'none';
+      }, null, { timeout: 8000 }).catch(() => {});
+      miss.push(...await page.evaluate(() => {
+        const el = document.querySelector('[data-k="ad"]');
+        return el && getComputedStyle(el).display !== 'none' ? [] : ['ad still hidden when hideAds=false'];
+      }));
+      return miss;
+    });
+
+    await feature('ads-home-data', async () => {
+      await reset();
+      await seed({ hideAds: true });
+      await page.goto(HOME, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.getElementById('margin-root')?.shadowRoot?.querySelector('.grid .card:not(.sk)'), null, { timeout: 15_000 });
+      await sleep(600);
+      const miss = await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        const titles = [...r?.querySelectorAll('.grid .card .title') ?? []].map((e) => e.textContent ?? '');
+        return titles.some((t) => t.includes('广告推广视频')) ? ['data-level ad shown'] : [];
+      });
+      await seed({ hideAds: false });
+      await page.waitForFunction(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        return [...r?.querySelectorAll('.grid .card .title') ?? []].some((e) => (e.textContent ?? '').includes('广告推广视频'));
+      }, null, { timeout: 8000 }).catch(() => {});
+      miss.push(...await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        return [...r?.querySelectorAll('.grid .card .title') ?? []].some((e) => (e.textContent ?? '').includes('广告推广视频')) ? [] : ['data-level ad not revealed'];
+      }));
+      return miss;
+    });
+
+    await feature('reduced-motion', async () => {
+      await reset();
+      await seed({ reduceMotion: true });
+      await page.goto(HOME, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.getElementById('margin-root')?.shadowRoot, null, { timeout: 15_000 });
+      await page.waitForFunction(() => document.documentElement.classList.contains('margin-reduce'), null, { timeout: 8000 }).catch(() => {});
+      await sleep(400);
+      const miss = await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        const app = r?.querySelector('.app');
+        const m = [];
+        if (!document.documentElement.classList.contains('margin-reduce')) m.push('html class missing');
+        if (!app?.classList.contains('margin-reduce')) m.push('shadow app class missing');
+        const card = r?.querySelector('.grid .card:not(.sk)');
+        if (card) {
+          const d = parseFloat(getComputedStyle(card).animationDuration) || 0;
+          if (d > 0.01) m.push(`card animation ${getComputedStyle(card).animationDuration}`);
+        }
+        return m;
+      });
+      await seed({ reduceMotion: false });
+      await page.waitForFunction(() => !document.documentElement.classList.contains('margin-reduce'), null, { timeout: 8000 }).catch(() => {});
+      miss.push(...await page.evaluate(() => document.documentElement.classList.contains('margin-reduce') ? ['class not removed'] : []));
+      return miss;
+    });
+
+    await feature('message-remind', async () => {
+      await reset();
+      requests = [];
+      await seed({ msgRemind: false });
+      await page.goto(HOME, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3200);
+      const miss = [];
+      if (requests.some((u) => u.includes('msgfeed/unread') || u.includes('single_unread'))) miss.push('message unread still requested');
+      if (!requests.some((u) => u.includes('web-dynamic/v1/feed/all'))) miss.push('dynamic updates not requested');
+      miss.push(...await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        const btn = [...r?.querySelectorAll('.et-btn') ?? []].find((b) => (b.getAttribute('aria-label') ?? '').startsWith('消息'));
+        return btn?.querySelector('.et-badge') ? ['message badge still shown'] : [];
+      }));
+      // 消息页自身仍要显示未读数（开关只控制主动提醒）
+      requests = [];
+      await page.goto(MESSAGE, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(2200);
+      if (!requests.some((u) => u.includes('msgfeed/unread') || u.includes('single_unread'))) miss.push('message page own unread not requested');
+      miss.push(...await page.evaluate(() => {
+        const r = document.getElementById('margin-root')?.shadowRoot;
+        const counts = [...r?.querySelectorAll('.ms-n') ?? []].map((n) => n.textContent?.trim()).filter(Boolean);
+        return counts.length ? [] : ['message page counts empty'];
+      }));
+      return miss;
+    });
+
+    await feature('wide-mode', async () => {
+      await reset();
+      await seed({ wide: true });
+      await page.goto(WATCH, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.documentElement.classList.contains('margin-wide') &&
+        document.querySelector('.bpx-player-container')?.getAttribute('data-screen') === 'wide', null, { timeout: 12_000 }).catch(() => {});
+      const miss = await page.evaluate(() => {
+        const m = [];
+        if (!document.documentElement.classList.contains('margin-wide')) m.push('margin-wide missing');
+        if (document.querySelector('.bpx-player-container')?.getAttribute('data-screen') !== 'wide') m.push('player not wide');
+        return m;
+      });
+      await seed({ wide: false });
+      await page.goto(WATCH, { waitUntil: 'domcontentloaded' });
+      await sleep(2500);
+      miss.push(...await page.evaluate(() => {
+        const m = [];
+        if (document.documentElement.classList.contains('margin-wide')) m.push('margin-wide still present');
+        if (document.querySelector('.bpx-player-container')?.getAttribute('data-screen') !== 'normal') m.push('player auto-widened');
+        return m;
+      }));
+      return miss;
+    });
+
+    await reset();
   }
 
   // 模块挂载失败时回到原版：用调试钩子 margin:test-throw 让模块故意抛错

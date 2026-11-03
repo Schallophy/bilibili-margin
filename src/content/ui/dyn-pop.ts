@@ -4,6 +4,9 @@ import { folders } from '../api/fav';
 import { watchLater } from '../api/search';
 import { unread } from '../api/msg';
 import { h } from './dom';
+import type { FilterRuntime } from '../filter-runtime';
+import type { FilterTarget } from '../filter';
+import { targetOfPopRow } from '../filter-targets';
 
 /** 悬停多久才弹出：只是路过顶栏时不打扰 */
 // 用户 2026-11-01：悬停立即展开，不要等
@@ -25,6 +28,16 @@ export interface PopSpec {
   grid?: boolean;
   /** 滚到底继续加载（v0.47.2，GitHub #9：动态弹窗固定 8 条，往下拉不会继续读）；返回空数组表示没有更多 */
   more?: () => Promise<PopRow[]>;
+  /** 当前功能是否允许打开（例如关闭消息提醒后不再弹消息面板） */
+  enabled?: () => boolean;
+  /** 该入口的行如何参与屏蔽词过滤；不设置表示不过滤 */
+  filterRow?: (r: PopRow) => FilterTarget | null;
+}
+
+export interface PopHandle {
+  close(): void;
+  /** 过滤条件变化后清掉 60 秒缓存并重新加载 */
+  invalidate(): void;
 }
 
 export function ago(ts: number, fallback = ''): string {
@@ -71,7 +84,7 @@ function allLink(spec: PopSpec): HTMLElement {
   return a;
 }
 
-export function attachHoverList(btn: HTMLElement, spec: PopSpec): void {
+export function attachHoverList(btn: HTMLElement, spec: PopSpec, filter?: FilterRuntime): PopHandle {
   const pop = h('div', { class: 'dp' + (spec.compact ? ' compact' : '') + (spec.grid ? ' grid' : ''), role: 'dialog', 'aria-label': spec.title, hidden: '' });
   const list = h('div', { class: 'dp-list' });
   pop.append(
@@ -79,6 +92,10 @@ export function attachHoverList(btn: HTMLElement, spec: PopSpec): void {
     list,
   );
   let openT = 0, closeT = 0, loadedAt = 0, open = false, done = true, busy = false;
+  // 屏蔽词过滤：主列表和分页追加都走同一套判断
+  const visible = (rows: PopRow[]) => filter && spec.filterRow
+    ? rows.filter((r) => { const t = spec.filterRow!(r); return !t || filter.allows(t); })
+    : rows;
   // 分页：滚到离底部 120px 内追加下一页；列表不够高时一直补到出现滚动条
   // 用 IntersectionObserver 看列表末尾的哨兵，滚动时不读布局
   const tail = h('i', { class: 'dp-tail', 'aria-hidden': 'true' });
@@ -93,7 +110,9 @@ export function attachHoverList(btn: HTMLElement, spec: PopSpec): void {
     spec.more().then((rows) => {
       sk.remove();
       if (!rows.length) { done = true; tail.before(h('p', { class: 'dp-end' }, '没有更多了')); return; }
-      tail.before(...rows.map(row));
+      const shown = visible(rows);
+      tail.before(...shown.map(row));
+      if (!shown.length) requestAnimationFrame(fill);
     }).catch(() => { sk.remove(); done = true; })
       .finally(() => { busy = false; requestAnimationFrame(fill); });
   };
@@ -105,7 +124,8 @@ export function attachHoverList(btn: HTMLElement, spec: PopSpec): void {
     list.replaceChildren(...Array.from({ length: spec.compact ? 5 : 4 }, () => h('div', { class: 'dp-skel' })));
     spec.load().then((rows) => {
       if (rows === null) { loadedAt = 0; list.replaceChildren(h('p', { class: 'dp-empty' }, `登录后可在这里看到${spec.title}`)); return; }
-      list.replaceChildren(...(rows.length ? rows.map(row) : [h('p', { class: 'dp-empty' }, spec.empty)]));
+      const shown = visible(rows);
+      list.replaceChildren(...(shown.length ? shown.map(row) : [h('p', { class: 'dp-empty' }, spec.empty)]));
       done = !spec.more || !rows.length;
       requestAnimationFrame(fill);
     }).catch(() => {
@@ -143,6 +163,7 @@ export function attachHoverList(btn: HTMLElement, spec: PopSpec): void {
 
   const show = () => {
     if (open) return;
+    if (spec.enabled && !spec.enabled()) return;
     open = true;
     // 同一时间只开一个
     pop.parentElement?.querySelectorAll<HTMLElement>('.dp[data-open]').forEach((p) => p !== pop && p.dispatchEvent(new Event('dp-close')));
@@ -168,6 +189,7 @@ export function attachHoverList(btn: HTMLElement, spec: PopSpec): void {
 
   const enter = (e: Event) => {
     if ((e as PointerEvent).pointerType === 'touch') return;
+    if (spec.enabled && !spec.enabled()) return;
     clearTimeout(closeT);
     if (!open) { clearTimeout(openT); if (OPEN_DELAY) openT = window.setTimeout(show, OPEN_DELAY); else show(); }
   };
@@ -181,6 +203,10 @@ export function attachHoverList(btn: HTMLElement, spec: PopSpec): void {
   pop.addEventListener('pointerleave', leave);
   addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
   addEventListener('resize', () => { if (open) place(); });
+  return {
+    close: hide,
+    invalidate() { loadedAt = 0; if (open) load(); },
+  };
 }
 
 /* ---------- 各入口的数据 ---------- */
@@ -206,7 +232,7 @@ const ZONES: [string, string][] = [
   ['汽车', 'c/car/'], ['时尚', 'c/fashion/'], ['运动', 'c/sports/'], ['动物圈', 'c/animal/'], ['课堂', 'cheese/'], ['排行榜', 'v/popular/rank/all'],
 ];
 
-export const POPS: Record<string, (o: { onDyn?: () => void }) => PopSpec> = {
+export const POPS: Record<string, (o: { onDyn?: () => void; msgRemind?: () => boolean }) => PopSpec> = {
   分区: () => ({
     title: '分区', all: { href: 'https://www.bilibili.com/v/popular/all', label: '热门' }, empty: '', grid: true,
     load: async () => ZONES.map(([t, path]) => ({ href: `https://www.bilibili.com/${path}`, title: t })),
@@ -215,8 +241,9 @@ export const POPS: Record<string, (o: { onDyn?: () => void }) => PopSpec> = {
     title: '正在直播', all: { href: 'https://link.bilibili.com/p/center/index#/user-center/follow/1', label: '我的关注' }, empty: '关注的主播都还没开播',
     load: async () => (await portal()).live.slice(0, 8).map((u) => ({ href: u.url, face: u.face, live: true, who: u.name, sub: '直播中', title: u.title || '正在直播' })),
   }),
-  消息: () => ({
+  消息: (o) => ({
     title: '消息', all: { href: 'https://message.bilibili.com/', label: '消息中心' }, empty: '', compact: true,
+    enabled: o.msgRemind,
     load: async () => {
       const u = await unread();
       const M = 'https://message.bilibili.com/#/';
@@ -244,11 +271,13 @@ export const POPS: Record<string, (o: { onDyn?: () => void }) => PopSpec> = {
     };
     return {
       title: '最新动态', all: { href: 'https://t.bilibili.com/', label: '全部动态' }, empty: '还没有新动态', onOpen: o.onDyn,
+      filterRow: (r) => targetOfPopRow(r),
       load: () => page(true), more: () => page(false),
     };
   },
   历史: () => ({
     title: '最近看过', all: { href: 'https://www.bilibili.com/history', label: '全部历史' }, empty: '还没有观看记录',
+    filterRow: (r) => targetOfPopRow(r),
     load: async () => (await historyList('all', null)).list.slice(0, 8).map((x) => ({
       href: x.url, title: x.title, who: x.author, sub: `${ago(x.viewAt)} · ${x.device}`, cover: x.cover,
       progress: x.duration > 0 ? (x.progress < 0 ? 1 : x.progress / x.duration) : undefined,
@@ -263,6 +292,7 @@ export const POPS: Record<string, (o: { onDyn?: () => void }) => PopSpec> = {
   }),
   稍后: () => ({
     title: '稍后再看', all: { href: 'https://www.bilibili.com/list/watchlater', label: '全部' }, empty: '稍后再看是空的',
+    filterRow: (r) => targetOfPopRow(r),
     load: async () => {
       const l = await watchLater();
       return l && l.slice(0, 8).map((x) => ({

@@ -4,12 +4,14 @@ import { clearHistory, deleteHistory, historyList, historyPaused, historySearch,
 import { dayBucket, fmtDuration, h, icon, ICONS } from './dom';
 import { segmented, toast } from './controls';
 import { PageShell } from './shell';
+import { targetOfHistory } from '../filter-targets';
 
 const KINDS: [HistKind, string][] = [['all', '全部'], ['archive', '视频'], ['live', '直播'], ['article', '专栏']];
 const KIND_LABEL: Record<string, string> = { archive: 'VIDEO', pgc: 'BANGUMI', live: 'LIVE', article: 'ARTICLE', 'article-list': 'ARTICLE', cheese: 'COURSE' };
 const ext = { target: '_blank', rel: 'noopener' };
 const img = (src: string, w: number, hh: number) => h('img', { src: src ? `${src}@${w}w_${hh}h_1c.webp` : '', alt: '', loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' });
 const clock = (ts: number) => { const d = new Date(ts * 1000); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const histData = new WeakMap<Element, HistItem>();
 
 /**
  * 历史记录：21st「Activity Timeline」(olewandowski1, 28340) 的结构——按天分组的分隔标签，
@@ -82,6 +84,7 @@ export class HistoryApp {
     wrap.append(head, bar, this.list, this.status, this.sentinel);
     s.main.append(wrap);
     new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) this.load(); }, { root: s.app, rootMargin: '900px 0px' }).observe(this.sentinel);
+    this.shell.filter.onChange(() => this.applyFilters());
 
     nav().then((n) => {
       if (!n?.isLogin) {
@@ -120,6 +123,7 @@ export class HistoryApp {
       if (gen !== this.gen) return;
       sk.forEach((n) => n.remove());
       for (const it of items) this.add(it);
+      this.applyFilters();
       this.total += items.length;
       this.count.textContent = this.total ? (this.done ? `${this.total} 条` : `${this.total}+ 条`) : '';
       if (!this.total) this.list.append(h('div', { class: 'ms-empty' }, h('p', {}, this.keyword ? `没有找到「${this.keyword}」` : '这里还空着')));
@@ -175,7 +179,24 @@ export class HistoryApp {
         setTimeout(() => { const g = li.parentElement; li.remove(); if (g && !g.children.length) { g.previousElementSibling?.remove(); g.remove(); } }, 260);
       } catch (err) { li.classList.remove('out'); toast(this.shell.app, `删除失败：${(err as Error).message}`); }
     });
+    histData.set(li, it);
+    li.toggleAttribute('data-margin-filtered', !this.shell.filter.allows(targetOfHistory(it)));
     return li;
+  }
+
+  /** 标记命中屏蔽词的记录，并藏掉没有可见行的日期分组 */
+  private applyFilters(): void {
+    const filter = this.shell.filter;
+    this.list.querySelectorAll<HTMLElement>('.hi-row').forEach((li) => {
+      const it = histData.get(li);
+      if (it) li.toggleAttribute('data-margin-filtered', !filter.allows(targetOfHistory(it)));
+    });
+    this.list.querySelectorAll<HTMLElement>('.hi-group').forEach((group) => {
+      const hide = !group.querySelector('.hi-row:not([data-margin-filtered])');
+      group.hidden = hide;
+      const day = group.previousElementSibling;
+      if (day?.classList.contains('hi-day')) (day as HTMLElement).hidden = hide;
+    });
   }
 }
 

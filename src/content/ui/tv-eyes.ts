@@ -8,6 +8,7 @@
 import { introActive, onIntroEnd } from './intro/gate';
 import { BILI_TIGHT } from './intro/logo';
 import { setMarkup } from './dom';
+import { onMotionChange, reducedMotion } from '../motion';
 
 const VERT = `attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}`;
 
@@ -91,7 +92,6 @@ export function liveTv(span: HTMLElement): void {
   span.append(canvas);
   span.classList.add('live');
 
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
   const look = { x: 0, y: 0 }, target = { x: 0, y: 0 }, glance = { x: 0, y: 0 };
   let color = rgb(getComputedStyle(span).color);
   let raf = 0, timer = 0, lost = false, onScreen = true;
@@ -123,7 +123,7 @@ export function liveTv(span: HTMLElement): void {
   const tick = (now: number) => {
     raf = 0;
     if (!awake() || !cw) return;
-    const still = reduce.matches;
+    const still = reducedMotion();
     const steering = now - pointerAt < IDLE_MS;
     if (steering) steer();
     if (!steering && !still && now >= nextGlance) {
@@ -175,7 +175,7 @@ export function liveTv(span: HTMLElement): void {
   };
   new IntersectionObserver(([en]) => { onScreen = en?.isIntersecting ?? true; wake(); }).observe(span);
   document.addEventListener('visibilitychange', wake);
-  reduce.addEventListener('change', wake);
+  onMotionChange(wake);
   new ResizeObserver(([en]) => { if (!cw) syncColor(); cw = en.contentRect.width; ch = en.contentRect.height; resize(); if (!raf) draw(0); wake(); }).observe(canvas);
   // 昼夜切换：图标颜色跟着 .app[data-theme] 变
   const syncColor = () => { const c = rgb(getComputedStyle(span).color); if (c.join() !== color.join()) { color = c; if (!raf) draw(0); } };

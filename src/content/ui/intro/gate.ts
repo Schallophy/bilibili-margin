@@ -11,9 +11,9 @@ export function onIntroEnd(f: () => void): void { if (!active) f(); else subs.ad
 
 export const SESSION_KEY = 'margin:intro-played';
 
-/** 这次要不要放开场：每个浏览器会话一次；减少动态效果、软件渲染时不放 */
-export function shouldPlayIntro(enabled: boolean): boolean {
-  if (!enabled) return false;
+/** 这次要不要放开场：每个浏览器会话一次；用户减少动画或系统减少动态效果时不放 */
+export function shouldPlayIntro(enabled: boolean, userReduced = false): boolean {
+  if (!enabled || userReduced) return false;
   try { if (sessionStorage.getItem(SESSION_KEY) && !localStorage.getItem('margin:intro-always')) return false; } catch { /* ignore */ }
   return !matchMedia('(prefers-reduced-motion: reduce)').matches;
 }

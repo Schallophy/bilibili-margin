@@ -58,11 +58,7 @@ html.margin-skin .bili-header.fixed-header { display: none !important; }
 #margin-watch-top[hidden] { display: none !important; }
 html.margin-watch .video-container-v1, html.margin-watch .playlist-container { padding-top: 96px !important; }
 
-/* 广告与推广 */
-html.margin-watch .ad-report, html.margin-watch .slide-ad-exp, html.margin-watch .video-card-ad-small,
-html.margin-watch .ad-floor-exp, html.margin-watch #slide_ad, html.margin-watch .pop-live-small-mode,
-html.margin-watch .video-page-game-card-small, html.margin-watch .video-page-special-card-small,
-html.margin-watch .activity-m-v1, html.margin-watch .reply-notice, html.margin-watch .vcd { display: none !important; }
+/* 广告与推广：统一由 global.css 的 html.margin-ads-hide 控制（v0.47） */
 
 /* 标题与信息 */
 html.margin-watch .video-info-container { height: auto !important; padding-top: 0 !important; margin-bottom: 20px; }
@@ -226,7 +222,7 @@ html.margin-watch .fixed-sidenav-storage-item {
 /* 滚动条 */
 html.margin-watch { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--m-ink) 22%, transparent) transparent; }
 /* 宽屏模式：右栏让到播放器下方 */
-html.margin-watch.margin-wide .right-container { padding-top: var(--m-wide-pad, 0px) !important; }
+html.margin-skin.margin-wide .right-container { padding-top: var(--m-wide-pad, 0px) !important; }
 
 /* 映间三连：藏掉原版长按动效（工具栏项里的附加层），用描边进度 + 弹起碎光代替 */
 html.margin-triple .toolbar-left-item-wrap > :not(.video-toolbar-left-item):not(.van-popover):not(.van-popper) { display: none !important; }
@@ -466,7 +462,15 @@ html.margin-watch:has(.bpx-player-container[data-screen="web"]) #margin-watch-to
 /* v0.43 网页全屏可滚动：解除 B 站给 body 的 position:fixed，
    播放器改为 absolute 贴在文档顶端（坐标由 JS 写入），页面照常滚动，评论接在播放器下面 */
 html.margin-webscroll body.webscreen-fix { position: static !important; overflow: visible !important; }
-html.margin-webscroll .player-wrap { height: var(--m-ws-h) !important; }
+html.margin-webscroll .player-wrap,
+html.margin-webscroll #bilibili-player-wrap,
+html.margin-webscroll .bilibili-player-wrap { height: var(--m-ws-h) !important; }
 html.margin-webscroll .mode-webscreen { position: absolute !important; top: var(--m-ws-y) !important; left: var(--m-ws-x) !important;
   width: var(--m-ws-w) !important; height: 100vh !important; right: auto !important; bottom: auto !important; }
 html.margin-webscroll.margin-watch .left-container > .m-wcard:not([hidden]) { display: block !important; }
+
+/* v0.48 网页全屏可滚动时的滚轮音量提示 */
+.m-voltip { position: absolute; left: 50%; top: 50%; z-index: 120; transform: translate(-50%, -50%) scale(.96);
+  padding: 8px 14px; border-radius: 10px; background: rgba(0,0,0,.62); color: #fff; font: 500 14px/20px var(--margin-sans, system-ui);
+  font-variant-numeric: tabular-nums; pointer-events: none; opacity: 0; transition: opacity 150ms var(--ease-out, ease), transform 150ms var(--ease-out, ease); }
+.m-voltip.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }

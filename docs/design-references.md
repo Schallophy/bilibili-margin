@@ -37,3 +37,6 @@
 顶栏的液态玻璃（搜索框、快捷入口胶囊、选中滑块）按 21st.dev「Apple Liquid glass switcher」（Den Dionigi）移植：多层内阴影高光 + `backdrop-filter: url(#位移滤镜)` 折射背后的内容，选中滑块移动时弹一下。原版位移图是按 344×76 胶囊画的，这里按每块玻璃的实际尺寸用光学公式（squircle 斜面 + 斯涅尔折射）现算，尺寸变化时重算。
 
 首页足迹热力图的液态玻璃借鉴 bubbbly「GitHub Glass Card」的 WebGL 透镜思路：背景着色器先画进纹理，再在卡片位置做边缘折射、内部模糊、顶光高光与乳白 / 墨色染色（改写为圆角矩形 SDF，自写实现）。命令面板 v0.10 改为两栏：左边搜索，右边命令。
+
+
+实验功能「App 推荐流」（v0.48）：首页推荐改走 B 站 App 接口 `app.bilibili.com/x/v2/feed/index`，TV 端扫码授权拿 access_key。接口、APP 签名与扫码流程参考 [bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect)（CC BY-NC 4.0，文档）与 [BewlyBewly](https://github.com/BewlyBewly/BewlyBewly)「授权 App」的做法（MIT），代码为原生重写。
