@@ -17,9 +17,14 @@ export interface Video {
   aid?: number;
   trackId?: string;
   goto?: string;
+  /** 接口明确标记的广告/推广（v0.47），不靠标题猜测 */
+  ad?: boolean;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+const isAd = (v: any): boolean =>
+  v.is_ad === true || v.card_type === 'ad' || v.goto === 'ad' || Boolean(v.ad_info);
+
 const toVideo = (v: any): Video => ({
   bvid: v.bvid,
   cid: Number(v.cid) || 0,
@@ -36,6 +41,7 @@ const toVideo = (v: any): Video => ({
   aid: Number(v.id ?? v.aid) || undefined,
   trackId: v.track_id || undefined,
   goto: v.goto || undefined,
+  ad: isAd(v) || undefined,
 });
 
 /**

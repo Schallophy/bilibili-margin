@@ -2,7 +2,7 @@ import type { Settings } from '../../shared/settings';
 import { follow, spaceInfo, spaceRecent, spaceVideos, type SpaceInfo, type VideoOrder } from '../api/space';
 import { spaceDynamics } from '../api/dyn';
 import { videoCard, skeleton } from './card';
-import { dynCard } from './dyn';
+import { dynCard, dynData } from './dyn';
 import { segmented, toast } from './controls';
 import { fmtAgo, fmtCount, fmtDuration, h, icon, ICONS } from './dom';
 import type { Video } from '../api/feed';
@@ -10,6 +10,7 @@ import { cardData } from './card';
 import { attachPreview } from './preview';
 import { csrf, PageShell } from './shell';
 import { account } from '../api/account';
+import { targetOfVideo, targetOfDyn } from '../filter-targets';
 
 type Tab = 'video' | 'dynamic' | 'coin' | 'like';
 type Layout = 'grid' | 'list';
@@ -80,6 +81,7 @@ export class SpaceApp {
     spaceInfo(this.mid).then((info) => { this.info = info; hero.replaceWith(this.hero(info)); document.title = `${info.name} · 映间`; this.paintTabs(tabs); })
       .catch((e) => hero.replaceWith(h('section', { class: 'sp-hero' }, h('div', { class: 'sp-banner' }), h('div', { class: 'sp-id' }, h('div', { class: 'sp-who' }, h('h1', {}, `UID ${this.mid}`), h('p', { class: 'sp-sign' }, `资料加载失败：${(e as Error).message}`))))));
     new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) this.load(); }, { root: s.app, rootMargin: '900px 0px' }).observe(this.sentinel);
+    this.shell.filter.onChange(() => this.applyFilters());
     this.applyTabUi();
     this.load();
     for (const [k, label] of [['coin', '最近投币'], ['like', '最近点赞']] as const) {
@@ -93,6 +95,19 @@ export class SpaceApp {
         b.setAttribute('aria-selected', String(this.tab === k));
       }).catch(() => {});
     }
+  }
+
+  /** 屏蔽词/广告条件变化后重新标记已渲染的卡片 */
+  private applyFilters(): void {
+    const filter = this.shell.filter;
+    this.list.querySelectorAll<HTMLElement>('.card').forEach((card) => {
+      const v = cardData.get(card);
+      if (v) card.toggleAttribute('data-margin-filtered', !filter.allows(targetOfVideo(v)));
+    });
+    this.list.querySelectorAll<HTMLElement>('.dy').forEach((card) => {
+      const d = dynData.get(card);
+      if (d) card.toggleAttribute('data-margin-filtered', !filter.allows(targetOfDyn(d)));
+    });
   }
 
   private paintTabs(tabs: HTMLElement): void {
@@ -214,7 +229,11 @@ export class SpaceApp {
         if (gen !== this.gen) return;
         skNodes.forEach((n) => (n as Element).remove());
         const start = this.list.children.length;
-        r.list.forEach((v, i) => this.list.append(listMode ? this.row(v, start + i + 1) : videoCard(v, start + i, { compact: false })));
+        r.list.forEach((v, i) => {
+          const card = listMode ? this.row(v, start + i + 1) : videoCard(v, start + i, { compact: false });
+          card.toggleAttribute('data-margin-filtered', !this.shell.filter.allows(targetOfVideo(v)));
+          this.list.append(card);
+        });
         this.done = r.list.length === 0 || this.list.children.length >= r.total;
         if (!this.list.children.length) this.status.replaceChildren(h('span', {}, this.q ? `没有找到「${this.q}」相关的视频` : '还没有投稿'));
       } else {
@@ -222,7 +241,11 @@ export class SpaceApp {
         if (gen !== this.gen) return;
         skNodes.forEach((n) => (n as Element).remove());
         this.offset = r.offset;
-        r.list.forEach((d) => this.list.append(dynCard(d)));
+        r.list.forEach((d) => {
+          const card = dynCard(d);
+          card.toggleAttribute('data-margin-filtered', !this.shell.filter.allows(targetOfDyn(d)));
+          this.list.append(card);
+        });
         this.done = !r.more;
         if (!this.list.children.length) this.status.replaceChildren(h('span', {}, '还没有动态'));
       }

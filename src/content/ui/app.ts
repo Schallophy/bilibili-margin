@@ -1,15 +1,17 @@
 import { dislike, popular, recommended, type Video } from '../api/feed';
+import { appDislike, appRecommended } from '../api/appfeed';
+import { noteNegative, rerank, resetRank } from '../rank';
 import { followClassics, resetClassics } from '../api/space';
 import { account } from '../api/account';
-import type { Settings } from '../../shared/settings';
-import { saveSettings } from '../../shared/settings';
+import { normalizeHomeOrder, saveSettings, type HomeSection, type Settings } from '../../shared/settings';
 import { BackgroundLayer } from '../bg/background';
-import { compileFilter, type Predicate } from '../filter';
+import { FilterRuntime } from '../filter-runtime';
+import { targetOfVideo } from '../filter-targets';
 import { videoCard, skeleton } from './card';
 import { toast } from './controls';
 import { h, icon, ICONS } from './dom';
 import { createFavorites } from './favorites';
-import { createHeader, SITE_LINKS } from './header';
+import { createHeader, SITE_LINKS, type Header } from './header';
 import { shouldPlayIntro, setIntroActive } from './intro/gate';
 import { createHeroSearch } from './hero-search';
 import { createFootprintCard } from './footprint';
@@ -23,6 +25,7 @@ import { createCommandPalette } from './command-palette';
 import { createContextMenu } from './context-menu';
 import { bindCardMenu } from './card-menu';
 import { createLaterDrawer } from './drawer';
+import { reducedMotion } from '../motion';
 import css from '../styles.css?inline';
 
 type Tab = 'rcmd' | 'popular' | 'classic';
@@ -35,6 +38,7 @@ export class MarginApp {
   private status!: HTMLElement;
   private sentinel!: HTMLElement;
   private sunMoon!: SunMoon;
+  private head!: Header;
   private fadeTimer = 0;
   private bg = new BackgroundLayer();
   private panel!: SettingsPanel;
@@ -44,17 +48,20 @@ export class MarginApp {
   private wx: HTMLElement | null = null;
   private tab: Tab = 'rcmd';
   private round = 1;
+  /** App 推荐流的翻页游标（上一批最后一张卡的 idx），换一批时归零 */
+  private appIdx = 0;
+  private appHinted = false;
   private page = 1;
   private loading = false;
   private done = false;
   private items: Video[] = [];
   private seen = new Set<string>();
-  private keep: Predicate;
+  private filter!: FilterRuntime;
   private gen = 0;
   private media = matchMedia('(prefers-color-scheme: dark)');
 
   constructor(private settings: Settings) {
-    this.keep = compileFilter(settings.filters);
+    this.filter = new FilterRuntime(settings);
     this.host = h('div', { id: 'margin-root' });
     this.root = this.host.attachShadow({ mode: 'open' });
     this.root.append(h('style', {}, css));
@@ -66,14 +73,15 @@ export class MarginApp {
   update(s: Settings): void {
     const prev = this.settings;
     this.settings = s;
-    if (JSON.stringify(prev.filters) !== JSON.stringify(s.filters)) {
-      this.keep = compileFilter(s.filters);
-      this.repaint();
-    }
+    if (this.filter.update(s)) this.repaint();
+    if ((prev.appFeed !== s.appFeed || prev.rerank !== s.rerank) && this.tab === 'rcmd') this.reload();
     if (prev.footprint !== s.footprint || prev.weather !== s.weather) this.syncDash();
     this.app.dataset.cols = String(s.cols || "auto");
     if (prev.homeHide.join() !== s.homeHide.join()) { this.syncHide(); this.repaint(); }
-    if (prev.theme !== s.theme || prev.palette !== s.palette || JSON.stringify(prev.bg) !== JSON.stringify(s.bg)) this.applyTheme();
+    const order = normalizeHomeOrder(s.homeOrder);
+    if (order.join('|') !== this.orderKey) this.applyOrder(order);
+    if (prev.reduceMotion !== s.reduceMotion || prev.theme !== s.theme || prev.palette !== s.palette || JSON.stringify(prev.bg) !== JSON.stringify(s.bg)) this.applyTheme();
+    this.head.setMsgRemind(s.msgRemind);
     this.panel.sync(s);
   }
 
@@ -88,7 +96,8 @@ export class MarginApp {
     this.app.dataset.palette = this.settings.palette;
     this.app.dataset.bg = this.settings.bg.mode;
     this.app.dataset.cols = String(this.settings.cols || 'auto');
-    this.sunMoon.set(t);
+    this.app.classList.toggle('margin-reduce', this.settings.reduceMotion);
+    this.sunMoon.set(t, !reducedMotion());
     this.bg.apply(this.settings.bg, t, this.settings.palette).then(() => this.panel?.sync(this.settings));
   }
 
@@ -109,9 +118,11 @@ export class MarginApp {
     el.classList.add('gone');
     window.setTimeout(() => { el.remove(); this.fillIfShort(); }, 220);
     try {
-      await dislike(v, 1);
+      noteNegative(v.mid);
+      const fb = (cancel = false) => (v.goto === 'app' ? appDislike(v, 1, cancel) : dislike(v, 1, cancel));
+      await fb();
       toast(this.app, '好的，以后少推这类视频', { label: '撤销', run: async () => {
-        await dislike(v, 1, true).catch(() => {});
+        await fb(true).catch(() => {});
         if (!this.items.includes(v)) { this.items.splice(Math.max(0, at), 0, v); this.repaint(); }
       } });
     } catch (e) {
@@ -120,6 +131,9 @@ export class MarginApp {
   }
   private headEl!: HTMLElement;
   private heroEl!: HTMLElement;
+  private mainEl!: HTMLElement;
+  private sectionNodes = new Map<HomeSection, Node[]>();
+  private orderKey = '';
   /** 首页部件显隐（v0.43）：只切 data-hide，CSS 负责藏；搜索框藏起来时顶栏的小搜索框回来 */
   private syncHide(): void {
     const hide = this.settings.homeHide;
@@ -129,20 +143,31 @@ export class MarginApp {
     this.bg.setFocus(noHero ? null : this.heroEl);
   }
 
+  /** 按设置顺序移动同一批节点；不重建 DOM，吸顶/无限滚动/预览/事件都保留 */
+  private applyOrder(value: HomeSection[]): void {
+    if (!this.mainEl) return;
+    const order = normalizeHomeOrder(value);
+    this.orderKey = order.join('|');
+    for (const id of order) {
+      const nodes = this.sectionNodes.get(id);
+      if (nodes) this.mainEl.append(...nodes);
+    }
+  }
+
   private showFoot(): void {
     if (!this.settings.footprint) { toast(this.app, '足迹热力图已关闭', { label: '打开', run: () => saveSettings({ footprint: true }) }); return; }
-    this.app.scrollTo({ top: 0, behavior: 'smooth' });
-    this.foot.animate([{ boxShadow: '0 0 0 2px var(--accent)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1200, easing: 'ease-out' });
+    this.app.scrollTo({ top: 0, behavior: reducedMotion() ? 'auto' : 'smooth' });
+    if (!reducedMotion()) this.foot.animate([{ boxShadow: '0 0 0 2px var(--accent)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1200, easing: 'ease-out' });
   }
 
   private render(): void {
     this.panel = createSettingsPanel(() => this.settings, () => this.bg.shader);
-    this.fav = createFavorites((g) => attachPreview(g, () => this.settings.hoverPreview), () => this.settings.favDirect);
+    this.fav = createFavorites((g) => attachPreview(g, () => this.settings.hoverPreview), () => this.settings.favDirect, this.filter);
     this.foot = createFootprintCard();
     this.dash = h('div', { class: 'dash' });
     this.syncDash();
     // v0.20：足迹卡片改用 21st Glass Calendar 的 CSS 玻璃，不再走 GL 折射透镜
-    const later = createLaterDrawer(() => this.app);
+    const later = createLaterDrawer(() => this.app, this.filter);
     const palette = createCommandPalette([
       { id: 'refresh', title: '换一批推荐', cat: '操作', icon: ICONS.refresh, keys: ['刷新', 'refresh'], run: () => this.reload() },
       { id: 'rcmd', title: '看推荐', cat: '跳转', icon: ICONS.moments, keys: ['首页'], run: () => (this.app.querySelector('.tab[data-tab=rcmd]') as HTMLElement)?.click() },
@@ -161,7 +186,7 @@ export class MarginApp {
       { id: 'off', title: '本次回到 B 站原版', cat: '操作', icon: ICONS.exit, keys: ['原版', '关闭'], run: () => { sessionStorage.setItem('margin:off', '1'); location.reload(); } },
     ]);
     const cm = createContextMenu();
-    const head = createHeader({ onTheme: () => this.toggleTheme(), onSearch: (q) => palette.open(q), tabs: [
+    const head = createHeader({ onTheme: () => this.toggleTheme(), onSearch: (q) => palette.open(q), msgRemind: () => this.settings.msgRemind, filter: this.filter, tabs: [
       ...SITE_LINKS,
       'separator',
       { title: '收藏', icon: ICONS.fav, run: () => this.fav.open() },
@@ -170,6 +195,7 @@ export class MarginApp {
       { title: '设置', icon: ICONS.gear, run: () => this.panel.sheet.open() },
     ] });
     this.sunMoon = head.sunMoon;
+    this.head = head;
     const header = head.el;
 
     const tabs = h('div', { class: 'tabs', role: 'tablist' });
@@ -179,7 +205,9 @@ export class MarginApp {
       return b;
     };
     tabs.append(mkTab('rcmd', '推荐'), mkTab('popular', '热门'), mkTab('classic', '关注老片'));
-    const refresh = h('button', { class: 'ghost refresh', type: 'button', title: '换一批', onclick: () => this.reload() }, icon(ICONS.refresh), h('span', {}, '换一批'));
+    const refresh = h('button', { class: 'ghost refresh', type: 'button', title: '换一批', onclick: () => this.reload(true) }, icon(ICONS.refresh), h('span', {}, '换一批'));
+    // 上一批（评论区 K-aloy：习惯 biliplus 的首页回退）：换一批之后可以回到刚才那批，再点一次又回来
+    this.backBtn = h('button', { class: 'ghost refresh back', type: 'button', title: '回到上一批', hidden: true, onclick: () => this.restore() }, icon(ICONS.back), h('span', {}, '上一批'));
 
     // 吸顶时分类栏变成液态玻璃胶囊，日期行收起
     head.el.classList.add('no-search');
@@ -188,7 +216,7 @@ export class MarginApp {
     const heroS = createHeroSearch(() => this.app);
     const hero = heroS.el;
     this.headEl = head.el; this.heroEl = hero;
-    const bar = h('div', { class: 'bar' }, h('div', { class: 'eyebrow' }, h('span', {}, todayLabel()), h('span', { class: 'en' }, 'For You'), h('span', { class: 'no' }, issueNo())), h('div', { class: 'bar-row' }, tabs, refresh));
+    const bar = h('div', { class: 'bar' }, h('div', { class: 'eyebrow' }, h('span', {}, todayLabel()), h('span', { class: 'en' }, 'For You'), h('span', { class: 'no' }, issueNo())), h('div', { class: 'bar-row' }, tabs, h('div', { class: 'bar-acts' }, this.backBtn, refresh)));
 
     this.grid = h('section', { class: 'grid home-grid', 'aria-live': 'polite' });
     this.status = h('div', { class: 'status' });
@@ -199,18 +227,20 @@ export class MarginApp {
       class: 'ghost small', type: 'button', onclick: () => { sessionStorage.setItem('margin:off', '1'); location.reload(); },
     }, icon(ICONS.exit), h('span', {}, '本次回到 B 站原版首页'));
 
+    const footer = h('footer', { class: 'foot' }, exit, h('span', {}, '映间 MARGIN · 非 B 站官方'));
+    const main = h('main', { class: 'main' });
+    this.mainEl = main;
+    this.sectionNodes = new Map<HomeSection, Node[]>([
+      ['hero', [heroS.scrim, hero]],
+      ['dash', [this.dash]],
+      ['toolbar', [barMark, bar]],
+      ['feed', [this.grid, this.status, this.sentinel]],
+      ['footer', [footer]],
+    ]);
     this.app = h('div', { class: 'app home' },
       this.bg.el,
       header,
-      h('main', { class: 'main' },
-        heroS.scrim,
-        hero,
-        this.dash,
-        barMark,
-        bar,
-        this.grid, this.status, this.sentinel,
-        h('footer', { class: 'foot' }, exit, h('span', {}, '映间 MARGIN · 非 B 站官方')),
-      ),
+      main,
       this.panel.sheet.el,
       this.fav.el,
       palette.el,
@@ -220,9 +250,10 @@ export class MarginApp {
     // 侧板开着时背景定格：侧板的毛玻璃（backdrop-filter）只有在底下画面变化时才需要每帧重算（v0.45）
     this.app.addEventListener('margin:sheet', () => { const on = !!this.app.querySelector('.sheet-layer[data-open="true"]'); this.app.classList.toggle('sheeted', on); this.bg.hold('sheet', on); });
     this.root.append(this.app);
+    this.applyOrder(this.settings.homeOrder);
     // 汇流背景的点线汇向首页搜索栏（搜索框隐藏时汇向屏幕中心）
     this.syncHide();
-    if (shouldPlayIntro(this.settings.intro)) {
+    if (shouldPlayIntro(this.settings.intro, this.settings.reduceMotion)) {
       // 开场引擎（WebGL，约 37KB）按需加载；加载前先用同色底板盖住首页，避免闪一下
       const theme = this.resolvedTheme();
       const cover = h('div', { class: 'intro', role: 'presentation', style: `background:${theme === 'dark' ? '#111112' : '#f5f4f1'}` });
@@ -275,7 +306,7 @@ export class MarginApp {
   private async toggleTheme(): Promise<void> {
     const next = this.resolvedTheme() === 'dark' ? 'light' : 'dark';
     // 页面颜色和日月动画用同一时长淡入淡出（替代原来的 View Transition 圆形揭幕，它会冻结按钮动画）
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (!reducedMotion()) {
       this.app.classList.add('theme-fading');
       this.app.style.setProperty('--fade', `${this.sunMoon.duration}ms`);
       clearTimeout(this.fadeTimer);
@@ -293,7 +324,30 @@ export class MarginApp {
     this.reload();
   }
 
-  private reload(): void {
+  private backBtn: HTMLElement | null = null;
+  private snap: { tab: Tab; items: Video[]; page: number; appIdx: number; done: boolean; round: number } | null = null;
+
+  private snapshot(): typeof this.snap {
+    return { tab: this.tab, items: this.items.slice(), page: this.page, appIdx: this.appIdx, done: this.done, round: this.round };
+  }
+
+  private restore(): void {
+    const s = this.snap;
+    if (!s || s.tab !== this.tab) return;
+    this.snap = this.snapshot();
+    this.gen++;
+    this.items = s.items.slice();
+    this.seen = new Set(s.items.map((v) => v.bvid));
+    this.page = s.page; this.appIdx = s.appIdx; this.done = s.done; this.round = s.round;
+    this.loading = false;
+    this.status.replaceChildren();
+    this.app.scrollTo({ top: 0 });
+    this.repaint();
+  }
+
+  private reload(keep = false): void {
+    this.snap = keep && this.items.length ? this.snapshot() : null;
+    if (this.backBtn) this.backBtn.hidden = !this.snap;
     this.gen++;
     this.grid.replaceChildren();
     this.items = [];
@@ -302,6 +356,8 @@ export class MarginApp {
     this.loading = false;
     this.page = 1;
     this.round++;
+    this.appIdx = 0;
+    resetRank();
     resetClassics();
     this.app.scrollTo({ top: 0 });
     this.load();
@@ -309,7 +365,7 @@ export class MarginApp {
 
   /** 过滤条件变化后，用已加载的数据重画网格 */
   private repaint(): void {
-    const shown = this.items.filter(this.keep);
+    const shown = this.items.filter((v) => this.filter.allows(targetOfVideo(v)));
     this.grid.replaceChildren(...shown.map((v, i) => videoCard(v, i, this.cardOpts())));
     this.grid.querySelectorAll('.card').forEach((c) => c.classList.add('still'));
     this.fillIfShort();
@@ -320,7 +376,9 @@ export class MarginApp {
     if (before.includes(v.author) || before.includes(String(v.mid))) return;
     await saveSettings({ filters: { ...this.settings.filters, ups: [...before, v.author] } });
     // 顺便告诉 B 站推荐「不想看此 UP 主」（失败不影响本地屏蔽）
-    if (v.trackId) dislike(v, 4).catch(() => {});
+    noteNegative(v.mid, 2);
+    if (v.goto === 'app') appDislike(v, 4).catch(() => {});
+    else if (v.trackId) dislike(v, 4).catch(() => {});
     toast(this.app, `已屏蔽「${v.author}」`, { label: '撤销', run: () => saveSettings({ filters: { ...this.settings.filters, ups: this.settings.filters.ups.filter((u) => u !== v.author) } }) });
   }
 
@@ -345,7 +403,14 @@ export class MarginApp {
     let added = 0;
     try {
       let list: Video[];
-      if (this.tab === 'rcmd') {
+      if (this.tab === 'rcmd' && this.settings.appFeed) {
+        // App 推荐流（v0.48 实验）：一批 10 来个，连取两批凑够一屏
+        const a = await appRecommended(this.appIdx);
+        const b = await appRecommended(a.next);
+        this.appIdx = b.next;
+        list = [...a.list, ...b.list];
+        if (!a.personal && !this.appHinted) { this.appHinted = true; toast(this.app, '正在用 App 推荐（未授权，不是个性化的）。在设置 → 实验功能里扫码授权'); }
+      } else if (this.tab === 'rcmd') {
         const batches = await Promise.all([recommended(this.round), recommended(this.round + 1)]);
         this.round += 2;
         list = batches.flat();
@@ -360,6 +425,7 @@ export class MarginApp {
         list = r.list;
         this.done = r.done;
       }
+      if (this.tab === 'rcmd' && this.settings.rerank) list = await rerank(list, this.items.slice(-3).map((x) => x.mid), this.seen).catch(() => list);
       if (gen !== this.gen) return;
       skNodes.forEach((n) => (n as Element).remove());
       const start = this.grid.children.length;
@@ -367,7 +433,7 @@ export class MarginApp {
         if (this.seen.has(v.bvid)) continue;
         this.seen.add(v.bvid);
         this.items.push(v);
-        if (!this.keep(v)) continue;
+        if (!this.filter.allows(targetOfVideo(v))) continue;
         this.grid.append(videoCard(v, start + added++, this.cardOpts()));
       }
       if (this.done) this.status.replaceChildren(h('span', {}, '没有更多了'));

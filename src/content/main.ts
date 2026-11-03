@@ -12,6 +12,9 @@ import watchCss from './watch.css?inline';
 import pagesCss from './pages.css?inline';
 import detailCss from './detail.css?inline';
 import liveCss from './live.css?inline';
+import globalCss from './global.css?inline';
+import { setUserReducedMotion } from './motion';
+import { startNativeFilter } from './native-filter';
 
 // Firefox：内容脚本自带的 fetch 以扩展身份发请求，B 站接口收不到登录 cookie（一直显示未登录）。
 // Firefox 另给了页面身份的 content.fetch，B 站自家域名的请求改走它；其他域名（天气等）照旧。Chrome 没有 content，不受影响。
@@ -38,6 +41,22 @@ type Pages = {
 const load = <K extends keyof Pages>(name: K): Promise<Pages[K]> => import(/* @vite-ignore */ chrome.runtime.getURL(`pages/${name}.js`));
 
 const HIDE_CSS = 'html{background:#111!important;overflow:hidden!important}body{display:none!important}@media (prefers-color-scheme: light){html{background:#f5f4f1!important}}';
+
+/** 文档级全局 CSS：过滤标记、广告规则、减少动画；和换皮 CSS 分开注入 */
+const GLOBAL_CSS_ID = 'margin-global-css';
+function mountGlobalCss(): void {
+  if (document.getElementById(GLOBAL_CSS_ID)) return;
+  const st = document.createElement('style');
+  st.id = GLOBAL_CSS_ID;
+  st.textContent = globalCss;
+  document.documentElement.append(st);
+}
+
+/** 设置开关映射到文档级 class；HTML 只负责命中 CSS，具体逻辑在各自组件里 */
+function applyGlobalUi(s: Settings): void {
+  document.documentElement.classList.toggle('margin-ads-hide', s.enabled && s.hideAds);
+  setUserReducedMotion(s.enabled && s.reduceMotion);
+}
 /** document_start 时先把原页面藏起来，避免闪一下原版 */
 function hideOriginal(): HTMLStyleElement {
   const hide = document.createElement('style');
@@ -110,6 +129,8 @@ async function startWatch(kind: SkinKind = 'watch'): Promise<void> {
   const mirror = skinMirror();
   if (mirror && mirror !== '0') skinStyle(kind, mirror);
   const settings = await loadSettings();
+  // 屏蔽词在原生页面独立生效；即使关闭了「其他页面重设计」，只开过滤也能用
+  if (settings.enabled && kind !== 'live') startNativeFilter(kind, settings);
   const on = settings.enabled && settings.watch;
   setSkinMirror(on ? settings.theme : '0');
   if (!on) { unskin(kind); return; }
@@ -119,7 +140,7 @@ async function startWatch(kind: SkinKind = 'watch'): Promise<void> {
   // 详情页：右侧作者栏 / 目录 / 操作区按需加载；出错只影响侧栏，换皮照常
   const dk = kind === 'page' ? detailKind() : null;
   if (dk) {
-    load('detail').then((m) => m.mountDetail(dk)).catch((e) => {
+    load('detail').then((m) => m.mountDetail(dk, skin.filter)).catch((e) => {
       console.error('[MARGIN] 详情页侧栏加载失败：', e);
       document.getElementById('margin-aside')?.remove();
       document.documentElement.classList.add('margin-detail-narrow');
@@ -165,6 +186,9 @@ function trackKeyboard(): void {
 }
 
 async function start(): Promise<void> {
+  mountGlobalCss();
+  // hideAds 默认开启：先在 document_start 挂上，避免等异步设置时闪一下广告
+  if (!offByUrl() && !sessionStorage.getItem('margin:off')) document.documentElement.classList.add('margin-ads-hide');
   injectFonts();
   trackKeyboard();
   startTracking(); // 足迹在所有 B 站页面记录，不只首页
@@ -247,6 +271,9 @@ async function guarded<T>(name: string, mount: () => Promise<T>, restore: () => 
 function restoreNative(hide: HTMLStyleElement, muted: boolean): void {
   hide.remove();
   document.documentElement.style.removeProperty('background');
+  // 挂载失败时连全局过滤/减少动画状态一起撤掉，真正回到原版
+  document.documentElement.classList.remove('margin-ads-hide', 'margin-reduce');
+  document.getElementById('margin-global-css')?.remove();
   if (!muted) return;
   sessionStorage.setItem('margin:off', 'err');
   location.reload();
@@ -277,7 +304,10 @@ function applyFont(s: Settings): void {
   try { if (on && s.cdn) localStorage.setItem('margin:cdn', s.cdn); else localStorage.removeItem('margin:cdn'); } catch { /* 隐私模式 */ }
   set('--margin-zoom', on && s.zoom !== 100 ? String(s.zoom / 100) : null);
 }
-if (!offByUrl()) { loadSettings().then(applyFont).catch(() => {}); onSettingsChange((n) => applyFont(n)); }
+if (!offByUrl() && !sessionStorage.getItem('margin:off')) {
+  loadSettings().then((s) => { applyFont(s); applyGlobalUi(s); }).catch(() => {});
+  onSettingsChange((n) => { applyFont(n); applyGlobalUi(n); });
+}
 
 /**
  * 扩展冲突提示（v0.47，评论区：Edge 上只有搜索页生效）：BewlyBewly 之类的整站重做扩展也在 document_start 接管页面，

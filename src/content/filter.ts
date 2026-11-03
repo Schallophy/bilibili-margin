@@ -1,14 +1,31 @@
 import type { Filters } from '../shared/settings';
-import type { Video } from './api/feed';
 
-export type Predicate = (v: Video) => boolean;
+/** 所有可过滤内容的统一形状；拿不到的字段必须是 null/undefined，不能当作 0 */
+export interface FilterTarget {
+  title: string;
+  author?: string | null;
+  mid?: number | null;
+  /** 播放量；未知时为 null/undefined */
+  views?: number | null;
+  /** 秒；未知时为 null/undefined */
+  duration?: number | null;
+  /** 接口明确标记的广告 */
+  ad?: boolean;
+}
+
+/** 返回 true 表示保留 */
+export type Predicate = (t: FilterTarget) => boolean;
 
 function keywordTest(k: string): ((s: string) => boolean) | null {
   const t = k.trim();
   if (!t) return null;
   const m = /^\/(.+)\/([a-z]*)$/.exec(t);
   if (m) {
-    try { const re = new RegExp(m[1], m[2].includes('i') ? m[2] : `${m[2]}i`); return (s) => re.test(s); } catch { return null; }
+    try {
+      const re = new RegExp(m[1], m[2].includes('i') ? m[2] : `${m[2]}i`);
+      // 带 g/y 的正则 test() 会推进 lastIndex，同一个关键词第二次就可能匹配失败
+      return (s) => { re.lastIndex = 0; return re.test(s); };
+    } catch { return null; }
   }
   const low = t.toLowerCase();
   return (s) => s.toLowerCase().includes(low);
@@ -23,12 +40,16 @@ export function compileFilter(f: Filters): Predicate {
     if (/^\d+$/.test(t)) mids.add(Number(t));
     else if (t) names.add(t.toLowerCase());
   }
-  return (v) =>
-    !kws.some((k) => k(v.title)) &&
-    !mids.has(v.mid) &&
-    !names.has(v.author.toLowerCase()) &&
-    v.views >= f.minViews &&
-    (f.minDuration <= 0 || !v.duration || v.duration >= f.minDuration);
+  return (t) => {
+    if (kws.some((k) => k(t.title))) return false;
+    if (t.mid != null && mids.has(t.mid)) return false;
+    if (t.author && names.has(t.author.toLowerCase())) return false;
+    // 未知播放量 / 时长放行：历史、稍后再看、动态、私信卡片没有这些字段
+    if (f.minViews > 0 && t.views != null && t.views < f.minViews) return false;
+    // 0 / null 都按「未知时长」放行；和旧版逐项过滤的行为一致
+    if (f.minDuration > 0 && t.duration != null && t.duration > 0 && t.duration < f.minDuration) return false;
+    return true;
+  };
 }
 
 /**

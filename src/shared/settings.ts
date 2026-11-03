@@ -8,6 +8,17 @@ export type BgMode = 'random' | 'fixed' | 'image' | 'off';
 export type HomeBit = 'search' | 'date' | 'refresh' | 'author' | 'views' | 'danmaku' | 'ago' | 'dur' | 'reason';
 export const HOME_BITS: HomeBit[] = ['search', 'date', 'refresh', 'author', 'views', 'danmaku', 'ago', 'dur', 'reason'];
 
+/** 首页可排序的板块（v0.47）：搜索区、足迹+天气、分类栏、视频流、页脚 */
+export type HomeSection = 'hero' | 'dash' | 'toolbar' | 'feed' | 'footer';
+export const HOME_SECTIONS: HomeSection[] = ['hero', 'dash', 'toolbar', 'feed', 'footer'];
+export const HOME_SECTION_NAMES: Record<HomeSection, string> = {
+  hero: '搜索区',
+  dash: '足迹与天气',
+  toolbar: '分类栏',
+  feed: '视频列表',
+  footer: '页脚',
+};
+
 export interface Filters {
   /** 标题关键词；写成 /正则/ 时按正则匹配 */
   keywords: string[];
@@ -23,6 +34,8 @@ export interface Background {
   shader: ShaderId;
   /** 0–1 */
   intensity: number;
+  /** 随机模式只在这些里面挑（v0.48，评论区 K-aloy：有些样式太花，想禁掉一部分）；空 = 全部 */
+  pool?: ShaderId[];
 }
 
 export interface Settings {
@@ -65,8 +78,35 @@ export interface Settings {
   bodyFont: string;
   /** 账号卡片可以拖拽甩动（v0.46）：关掉后卡片固定挂着，只能点击翻面 */
   idDrag: boolean;
+  /** 低配设备减少动画（v0.47）：暂停背景/天气/悬停动画并压缩过渡 */
+  reduceMotion: boolean;
+  /** 有 B 站播放器时自动进入宽屏（v0.47），番剧、列表等页面同样生效 */
+  wide: boolean;
+  /** 隐藏广告与推广（v0.47），默认开启；只做展示层过滤 */
+  hideAds: boolean;
+  /** 顶栏消息未读轮询与消息角标（v0.47）；动态角标不受影响 */
+  msgRemind: boolean;
+  /** 首页板块顺序（v0.47） */
+  homeOrder: HomeSection[];
+  /** App 推荐流（v0.48 实验，默认关）：首页「推荐」改走手机 App 的推荐接口，扫码授权后与手机同一套个性化推荐 */
+  appFeed: boolean;
+  /** X 式重排（v0.48 实验，默认关）：按本机算的偏好给推荐重新排序，混入关注新稿，看过的不再出现 */
+  rerank: boolean;
   filters: Filters;
   bg: Background;
+}
+
+/** 保留用户顺序，去掉不认识的项，再把缺失的板块按默认顺序补回末尾 */
+export function normalizeHomeOrder(value: unknown): HomeSection[] {
+  const out: HomeSection[] = [];
+  const add = (v: unknown) => {
+    if (typeof v !== 'string') return;
+    const s = v as HomeSection;
+    if (HOME_SECTIONS.includes(s) && !out.includes(s)) out.push(s);
+  };
+  if (Array.isArray(value)) value.forEach(add);
+  HOME_SECTIONS.forEach(add);
+  return out;
 }
 
 export const DEFAULTS: Settings = {
@@ -92,6 +132,13 @@ export const DEFAULTS: Settings = {
   cdn: '',
   bodyFont: '',
   idDrag: true,
+  reduceMotion: false,
+  wide: false,
+  hideAds: true,
+  msgRemind: true,
+  homeOrder: [...HOME_SECTIONS],
+  appFeed: false,
+  rerank: false,
   filters: { keywords: [], ups: [], minViews: 0, minDuration: 0 },
   bg: { mode: 'random', shader: 'aurora', intensity: 0.6 },
 };
@@ -131,6 +178,13 @@ function merge(raw: Partial<Settings> | undefined): Settings {
     cdn: cleanHost(r.cdn),
     bodyFont: cleanFont(r.bodyFont),
     idDrag: r.idDrag !== false,
+    reduceMotion: r.reduceMotion === true,
+    wide: r.wide === true,
+    hideAds: r.hideAds !== false,
+    msgRemind: r.msgRemind !== false,
+    homeOrder: normalizeHomeOrder(r.homeOrder),
+    appFeed: r.appFeed === true,
+    rerank: r.rerank === true,
     palette: 'classic', // 旧版存过 mist，统一回到经典
   };
 }
@@ -160,8 +214,9 @@ export function sanitizeSettings(raw: unknown): Settings | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const r = raw as Record<string, unknown>;
   const out: Partial<Settings> = {};
-  const bool = (k: 'enabled' | 'hoverPreview' | 'watch' | 'intro' | 'footprint' | 'weather' | 'favDirect' | 'autoWeb' | 'webScroll' | 'idDrag' | 'monoNum') => { if (typeof r[k] === 'boolean') out[k] = r[k] as boolean; };
+  const bool = (k: 'enabled' | 'hoverPreview' | 'watch' | 'intro' | 'footprint' | 'weather' | 'favDirect' | 'autoWeb' | 'webScroll' | 'idDrag' | 'monoNum' | 'reduceMotion' | 'wide' | 'hideAds' | 'msgRemind' | 'appFeed' | 'rerank') => { if (typeof r[k] === 'boolean') out[k] = r[k] as boolean; };
   bool('enabled'); bool('hoverPreview'); bool('watch'); bool('intro'); bool('footprint'); bool('weather'); bool('favDirect'); bool('autoWeb'); bool('webScroll'); bool('idDrag'); bool('monoNum');
+  bool('reduceMotion'); bool('wide'); bool('hideAds'); bool('msgRemind'); bool('appFeed'); bool('rerank');
   if (typeof r.bodyFont === 'string') out.bodyFont = cleanFont(r.bodyFont);
   if (Array.isArray(r.headHide)) out.headHide = strList(r.headHide);
   if (Array.isArray(r.headOrder)) out.headOrder = strList(r.headOrder);
@@ -171,6 +226,7 @@ export function sanitizeSettings(raw: unknown): Settings | null {
   if (r.titleFont === 'serif' || r.titleFont === 'sans') out.titleFont = r.titleFont;
   if (r.cols === 0 || r.cols === 4 || r.cols === 5) out.cols = r.cols;
   if (Array.isArray(r.homeHide)) out.homeHide = HOME_BITS.filter((b) => (r.homeHide as unknown[]).includes(b));
+  if (Array.isArray(r.homeOrder)) out.homeOrder = normalizeHomeOrder(r.homeOrder);
   if (r.theme === 'auto' || r.theme === 'light' || r.theme === 'dark') out.theme = r.theme;
   const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length <= 200).slice(0, 500) : undefined);
   const num = (v: unknown, max: number) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max ? v : undefined);
@@ -186,6 +242,7 @@ export function sanitizeSettings(raw: unknown): Settings | null {
     mode: (['random', 'fixed', 'image', 'off'] as BgMode[]).includes(b.mode as BgMode) ? (b.mode as BgMode) : DEFAULTS.bg.mode,
     shader: SHADERS.includes(b.shader as ShaderId) ? (b.shader as ShaderId) : DEFAULTS.bg.shader,
     intensity: num(b.intensity, 1) ?? DEFAULTS.bg.intensity,
+    pool: Array.isArray(b.pool) ? SHADERS.filter((x) => (b.pool as unknown[]).includes(x)) : [],
   };
   return merge(out);
 }

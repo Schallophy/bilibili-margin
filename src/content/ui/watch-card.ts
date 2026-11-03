@@ -41,6 +41,9 @@ export function startWatchCard(): void {
   const bind = () => {
     const lc = document.querySelector<HTMLElement>('.left-container');
     if (!lc) return;
+    // v0.48 修复（评论区 K-aloy：打开视频开头 1 秒会播两遍）：B 站 SSR 页面水合前往 .left-container 里插节点，
+    // Vue 会判定 DOM 不匹配、整页重新渲染，播放器被 checkBofqi 重建一次。水合完成时 Vue 会去掉 data-server-rendered，之后再插。
+    if (document.querySelector('[data-server-rendered]')) return;
     // B 站是 SSR + 水合，按位置认领子节点：插在最前面会被当成标题区「认领」掉，所以放最后，并在被改写时重建
     if (card && !card.classList.contains('m-wcard')) { card = null; host = null; }
     if (host !== lc) {

@@ -1,4 +1,5 @@
 import { h } from './dom';
+import { reducedMotion } from '../motion';
 
 /**
  * 刻度尺滚动进度：21st「Scroll Bars」（radiumcoders）竖向版的原生移植。
@@ -17,7 +18,6 @@ export function createScrollRuler(): HTMLElement {
   const H = (COUNT - 1) * GAP;
 
   let y = 0, v = 0, target = 0, raf = 0, last = 0, idle = 0;
-  const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
   // 可滚动高度缓存起来：滚动事件里读 scrollHeight 会在 B 站页面还在变的时候强制布局（v0.44 性能）
   let max = 0;
   const measure = () => { max = document.documentElement.scrollHeight - innerHeight; };
@@ -42,7 +42,7 @@ export function createScrollRuler(): HTMLElement {
   const update = () => {
     const p = progress();
     target = p * H; pct.textContent = `${Math.round(p * 100)}%`;
-    if (reduceMq.matches) { y = target; v = 0; }
+    if (reducedMotion()) { y = target; v = 0; }
     if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); }
   };
   const hideIdle = () => { idle = 0; if (!el.matches(':hover')) el.dataset.on = 'false'; };
@@ -76,7 +76,7 @@ export function createScrollRuler(): HTMLElement {
     if (!drag) return;
     const r = drag; drag = null;
     delete el.dataset.drag;
-    if (!moved) scrollTo({ top: at(e.clientY, r) * max, behavior: 'smooth' });
+    if (!moved) scrollTo({ top: at(e.clientY, r) * max, behavior: reducedMotion() ? 'auto' : 'smooth' });
     show();
   };
   track.addEventListener('pointerup', end);

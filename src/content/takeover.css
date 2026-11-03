@@ -153,9 +153,9 @@ a.sp-stat:hover b { color: var(--accent); }
 .ms-text { margin: 0; font-size: 16px; line-height: 1.75; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
 .ms-row.sys .ms-text { font-size: 14px; color: var(--muted); }
 /* 21st Notification Panel：引用原文是一枚浅灰圆角块 */
-.ms-quote { padding: 8px 16px; color: var(--muted); font-size: 13px; line-height: 1.6; background: var(--chip); border-radius: 10px; align-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ms-quote { padding: 2px 0 2px 12px; color: var(--muted); font-size: 13px; line-height: 1.6; border-left: 2px solid var(--line); align-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .ms-quote:hover { color: var(--ink); }
-.ms-q-k { margin-right: 10px; font: 500 10px/1 var(--mono); letter-spacing: .14em; color: var(--faint); vertical-align: 1px; }
+.ms-q-k { margin-right: 8px; font: 500 11px/1 var(--sans); color: var(--faint); vertical-align: 1px; }
 .ms-acts { display: flex; gap: 8px; margin-top: 2px; }
 .ms-act { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 8px; background: var(--ink); color: var(--canvas); font-size: 12px; font-weight: 600; transition: opacity .2s var(--ease-out), background-color .2s var(--ease-out); }
 .ms-act:hover { opacity: .85; }
@@ -172,7 +172,7 @@ a.sp-stat:hover b { color: var(--accent); }
 .ms-row.sk .ms-face { border-color: transparent; }
 
 /* 私信 */
-.wh { display: grid; grid-template-columns: 280px minmax(0, 1fr); height: calc(100vh - 230px); min-height: 460px; margin-top: 20px; border-radius: 20px; overflow: hidden; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 82%, transparent); }
+.wh { display: grid; grid-template-columns: 280px minmax(0, 1fr); height: calc(100vh - 230px); min-height: 360px; margin-top: 20px; border-radius: 20px; overflow: hidden; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 82%, transparent); }
 .wh-list { overflow-y: auto; border-right: 1px solid var(--line); padding: 6px 10px 12px; scrollbar-width: thin; }
 /* 21st Conversation List：按日期分组，等宽大写小标题 */
 .wh-day { padding: 16px 10px 8px; font: 500 11px/1 var(--mono); letter-spacing: .08em; color: var(--faint); }
