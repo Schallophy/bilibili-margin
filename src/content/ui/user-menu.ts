@@ -1,6 +1,7 @@
 import { loadSettings, onSettingsChange } from '../../shared/settings';
 import { account, accountStat, dynamicUpdates, logout, resetDynamicBaseline, unreadTotal, type Account } from '../api/account';
 import { fmtCount, h, icon, ICONS, setMarkup } from './dom';
+import { reducedMotion } from '../motion';
 
 /**
  * 头像卡片：移植用户贴来的 21st「ID Card Lanyard」——
@@ -53,8 +54,15 @@ function barcode(mid: number): HTMLElement {
 
 // 设置「账号卡片可拖拽」（v0.46，B 站评论建议）：关掉后卡片固定挂着，只能点击翻面
 let idDrag = true;
-loadSettings().then((s) => { idDrag = s.idDrag; }).catch(() => {});
-onSettingsChange((s) => { idDrag = s.idDrag; });
+// 消息提醒（v0.47）：关闭后账号卡片不再请求未读总数
+let msgRemind = true;
+const msgCards = new Set<(on: boolean) => void>();
+loadSettings().then((s) => { idDrag = s.idDrag; msgRemind = s.msgRemind; }).catch(() => {});
+onSettingsChange((s) => {
+  idDrag = s.idDrag;
+  const on = s.msgRemind;
+  if (on !== msgRemind) { msgRemind = on; msgCards.forEach((f) => f(on)); }
+});
 
 export function createUserMenu(a: Account): HTMLElement {
   const face = (px: number) => `${a.face}@${px}w_${px}h_1c.webp`;
@@ -183,6 +191,11 @@ function mountCard(a: Account, wrap: HTMLElement, trigger: HTMLElement, face: (p
   const tiltTarget = { x: 0, y: 0 }, tiltCurrent = { x: 0, y: 0 };
   let mouse = { x: -9999, y: -9999 };
   let raf = 0, isOpen = false, dpr = 1, t = 0, restX = 0, gx = 0, restAngle = 0;
+  const syncMsgRemind = (on: boolean) => {
+    if (!on) { unreadN.textContent = '—'; unreadN.classList.remove('hot'); }
+    else if (isOpen) unreadTotal().then((v) => mark(unreadN, v)).catch(() => {});
+  };
+  msgCards.add(syncMsgRemind);
 
   const resize = () => {
     const r = trigger.getBoundingClientRect();
@@ -390,19 +403,20 @@ function mountCard(a: Account, wrap: HTMLElement, trigger: HTMLElement, face: (p
     if (!stage.isConnected) (wrap.closest('.app') ?? wrap.getRootNode() as ShadowRoot).append(stage);
     resize();
     points.length = 0;
+    const fixed = !idDrag || reducedMotion();
     // 按原长沿静止方向摆直，再给一点横向初速度，挂出来时轻轻晃一下
     {
       const dx = restX - anchor.x, dy = Math.sqrt(Math.max(0, REST_LENGTH ** 2 - dx * dx));
       for (let i = 0; i < NUM_POINTS; i++) {
         const k = i / (NUM_POINTS - 1), x = anchor.x + dx * k, y = anchor.y + dy * k;
-        points.push({ x, y, oldx: idDrag ? x + k * 1.5 : x, oldy: y, pinned: i === 0 });
+        points.push({ x, y, oldx: fixed ? x : x + k * 1.5, oldy: y, pinned: i === 0 });
       }
     }
     flipped = false; flipTarget = 0; flipCurrent = 0;
     stage.hidden = false;
     stage.classList.remove('idcl-leaving');
-    stage.classList.toggle('idcl-fixed', !idDrag);
-    if (!idDrag) hint.remove();
+    stage.classList.toggle('idcl-fixed', fixed);
+    if (fixed) hint.remove();
     measure();
     addEventListener('pointermove', onMove);
     addEventListener('pointerup', onUp);
@@ -410,8 +424,9 @@ function mountCard(a: Account, wrap: HTMLElement, trigger: HTMLElement, face: (p
     addEventListener('blur', onOut);
     cancelAnimationFrame(raf); loop();
     wrap.setAttribute('data-open', '');
-    // 未读和新动态每次打开都刷新（会变）
-    unreadTotal().then((v) => mark(unreadN, v)).catch(() => {});
+    // 未读和新动态每次打开都刷新（会变）；关闭消息提醒时不请求未读
+    if (msgRemind) unreadTotal().then((v) => mark(unreadN, v)).catch(() => {});
+    else { unreadN.textContent = '—'; unreadN.classList.remove('hot'); }
     dynamicUpdates().then((v) => mark(dynN, v)).catch(() => {});
     if (!loaded) {
       loaded = true;

@@ -8,6 +8,7 @@ import { dynCard } from './dyn';
 import { compileDynFilter } from '../filter';
 import { fmtCount, h, icon, ICONS } from './dom';
 import { PageShell } from './shell';
+import { targetOfDyn } from '../filter-targets';
 
 const TYPES: [FeedType, string][] = [['all', '全部'], ['video', '视频投稿'], ['pgc', '追番追剧'], ['article', '专栏']];
 const ext = { target: '_blank', rel: 'noopener' };
@@ -66,6 +67,8 @@ export class FeedApp {
       this.list, this.status, this.sentinel);
     s.main.append(h('div', { class: 'fd' }, left, center, right));
     new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) this.load(); }, { root: s.app, rootMargin: '1200px 0px' }).observe(this.sentinel);
+    // 动态流同时用 compileDynFilter（含转发内容）和 FilterRuntime，条件变化后重新拉取一次
+    this.shell.filter.onChange(() => this.reload());
     let st = 0;
     s.app.addEventListener('scroll', () => { clearTimeout(st); st = window.setTimeout(() => this.fill(), 160); }, { passive: true });
 
@@ -166,7 +169,11 @@ export class FeedApp {
       if (gen !== this.gen) return;
       sk.forEach((n) => n.remove());
       const keep = compileDynFilter(this.shell.settings.filters);
-      r.list.filter(keep).forEach((d) => this.list.append(dynCard(d, false, true)));
+      r.list.filter(keep).forEach((d) => {
+        const card = dynCard(d, false, true);
+        card.toggleAttribute('data-margin-filtered', !this.shell.filter.allows(targetOfDyn(d)));
+        this.list.append(card);
+      });
       this.offset = r.offset;
       this.done = !r.more || !r.offset;
       if (!this.list.children.length) this.list.append(h('div', { class: 'ms-empty' }, h('p', {}, '这里还空着')));

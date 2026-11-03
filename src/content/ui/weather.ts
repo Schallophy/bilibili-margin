@@ -3,6 +3,7 @@ import { introActive } from './intro/gate';
 import { appendMarkup, h } from './dom';
 import { weather, geocode, setLoc, savedLoc, type Wx } from '../api/weather';
 import { WEATHER_SKIES, WEATHER_SKY_LAYERS, moonAge, weatherScene, glyphSvg, SKY_PITCH, FRAME } from './dotsky';
+import { onMotionChange, reducedMotion } from '../motion';
 
 /**
  * 首页天气卡：21st「Weather Widget」（vijayksingh）的横版排法——
@@ -20,7 +21,6 @@ export function createWeather(): HTMLElement {
   let wx: Wx | null = null;
   let tick = 0, visible = false;
   let stop: (() => void) | null = null;
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 
   const localHour = () => {
     const d = new Date(Date.now() + (wx?.offset ?? 0) * 1000);
@@ -59,7 +59,7 @@ export function createWeather(): HTMLElement {
   let fetchedAt = 0;
   const minute = () => {
     clockEl.textContent = clock();
-    if (reduced.matches) paint();
+    if (reducedMotion()) paint();
     if (Date.now() - fetchedAt > 30 * 60_000) { fetchedAt = Date.now(); load(true); } // 天气数据半小时刷新一次
   };
   const run = () => {
@@ -69,15 +69,15 @@ export function createWeather(): HTMLElement {
     if (!wx || !visible || document.hidden) return;
     minute();
     stopClock = every(15_000, minute);
-    if (reduced.matches) return;
+    if (reducedMotion()) return;
     stop = every(FRAME, () => {
       if (app?.classList.contains('scrolling') || app?.classList.contains('sheeted') || introActive()) return;
       tick++; paint();
     });
   };
-  reduced.addEventListener?.('change', run);
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; run(); }).observe(el);
   document.addEventListener('visibilitychange', run);
+  onMotionChange(run);
   addEventListener('margin:wx-loc', () => load());
 
   const editCity = (place: HTMLElement) => {

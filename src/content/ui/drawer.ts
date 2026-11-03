@@ -1,6 +1,9 @@
 import { removeWatchLater, watchLater, type LaterItem } from '../api/search';
 import { toast } from './controls';
 import { fmtAgo, fmtDuration, h, icon, ICONS } from './dom';
+import { reducedMotion } from '../motion';
+import type { FilterRuntime } from '../filter-runtime';
+import { targetOfLater } from '../filter-targets';
 
 /**
  * 侧边抽屉：21st「Drawer」（ddoemonn）的原生移植。
@@ -12,7 +15,7 @@ const WIDTH = 400;
 
 export interface Drawer { el: HTMLElement; open: () => void; close: () => void; refresh: () => void }
 
-export function createLaterDrawer(toastRoot: () => HTMLElement): Drawer {
+export function createLaterDrawer(toastRoot: () => HTMLElement, filter?: FilterRuntime): Drawer {
   const count = h('span', { class: 'dw-count' });
   const sub = h('p', { class: 'dw-sub' }, '加进来的视频都在这里');
   const body = h('div', { class: 'dw-body' });
@@ -26,7 +29,7 @@ export function createLaterDrawer(toastRoot: () => HTMLElement): Drawer {
 
   const away = WIDTH + 24;
   let x = away, v = 0, target = away, raf = 0, isOpen = false, returnTo: HTMLElement | null = null, loaded = false;
-  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduced = reducedMotion;
   const paint = () => {
     panel.style.transform = `translateX(${x}px)`;
     scrim.style.opacity = String(1 - Math.min(1, Math.abs(x) / WIDTH));
@@ -53,6 +56,7 @@ export function createLaterDrawer(toastRoot: () => HTMLElement): Drawer {
     if (!raf) step(performance.now());
   };
 
+  let raw: LaterItem[] | null = null;
   function render(list: LaterItem[] | null): void {
     if (list === null) {
       count.textContent = '';
@@ -60,10 +64,11 @@ export function createLaterDrawer(toastRoot: () => HTMLElement): Drawer {
       body.replaceChildren(h('div', { class: 'dw-empty' }, icon(ICONS.later), h('p', {}, '还没登录'), h('a', { class: 'ghost', href: 'https://passport.bilibili.com/login', target: '_blank', rel: 'noopener' }, '去登录')));
       return;
     }
-    count.textContent = String(list.length);
-    sub.textContent = list.length ? '右键视频卡片也能加进来' : '右键视频卡片 →「稍后再看」';
-    if (!list.length) { body.replaceChildren(h('div', { class: 'dw-empty' }, icon(ICONS.later), h('p', {}, '列表是空的'))); return; }
-    body.replaceChildren(...list.map((it, i) => {
+    const shown = filter ? list.filter((it) => filter.allows(targetOfLater(it))) : list;
+    count.textContent = String(shown.length);
+    sub.textContent = shown.length ? '右键视频卡片也能加进来' : '右键视频卡片 →「稍后再看」';
+    if (!shown.length) { body.replaceChildren(h('div', { class: 'dw-empty' }, icon(ICONS.later), h('p', {}, list.length ? '都被屏蔽词藏起来了' : '列表是空的'))); return; }
+    body.replaceChildren(...shown.map((it, i) => {
       const href = `https://www.bilibili.com/list/watchlater?bvid=${it.bvid}`;
       const pct = it.progress === -1 ? 100 : it.duration ? Math.min(100, (it.progress / it.duration) * 100) : 0;
       const row = h('a', { class: 'dw-item', href, target: '_blank', rel: 'noopener', style: `--i:${Math.min(i, 12)}` },
@@ -79,7 +84,11 @@ export function createLaterDrawer(toastRoot: () => HTMLElement): Drawer {
             e.preventDefault(); e.stopPropagation();
             row.classList.add('out');
             const ok = await removeWatchLater(it.aid).catch(() => false);
-            if (ok) { setTimeout(() => row.remove(), 220); count.textContent = String(Math.max(0, Number(count.textContent) - 1)); }
+            if (ok) {
+              raw = raw?.filter((x) => x !== it) ?? null;
+              setTimeout(() => row.remove(), 220);
+              count.textContent = String(Math.max(0, Number(count.textContent) - 1));
+            }
             else { row.classList.remove('out'); toast(toastRoot(), '没移掉，稍后再试'); }
           } }, icon(ICONS.close)),
       );
@@ -88,8 +97,9 @@ export function createLaterDrawer(toastRoot: () => HTMLElement): Drawer {
   }
   async function refresh(): Promise<void> {
     body.replaceChildren(...Array.from({ length: 5 }, () => h('div', { class: 'dw-item sk' }, h('span', { class: 'dw-cover' }), h('span', { class: 'dw-meta' }, h('span', { class: 'line' }), h('span', { class: 'line short' })))));
-    try { render(await watchLater()); loaded = true; } catch { body.replaceChildren(h('div', { class: 'dw-empty' }, h('p', {}, '加载失败'), h('button', { type: 'button', class: 'ghost', onclick: () => refresh() }, '重试'))); }
+    try { raw = await watchLater(); render(raw); loaded = true; } catch { body.replaceChildren(h('div', { class: 'dw-empty' }, h('p', {}, '加载失败'), h('button', { type: 'button', class: 'ghost', onclick: () => refresh() }, '重试'))); }
   }
+  filter?.onChange(() => { if (raw !== null) render(raw); });
 
   function open(): void {
     if (isOpen) return;

@@ -24,7 +24,9 @@ const VERB: Record<string, string> = { video: '视频', reply: '评论', dynamic
 
 export async function unread(): Promise<Unread> {
   const [a, b] = await Promise.all([
-    get<any>('https://api.bilibili.com/x/msgfeed/unread').catch(() => ({})),
+    // v0.48：和 B 站网页顶栏用同一个新接口（旧接口偶尔会多算一条已经读掉的系统通知，B 站评论反馈「永远剩一个」）
+    get<any>('https://api.vc.bilibili.com/x/im/web/msgfeed/unread', { build: 0, mobi_app: 'web' })
+      .catch(() => get<any>('https://api.bilibili.com/x/msgfeed/unread')).catch(() => ({})),
     get<any>('https://api.vc.bilibili.com/session_svr/v1/session_svr/single_unread', { unread_type: 0, show_unfollow_list: 1, show_dustbin: 1 }).catch(() => ({})),
   ]);
   return { reply: a.reply ?? 0, at: a.at ?? 0, like: a.like ?? 0, system: a.sys_msg ?? 0, chat: (b.follow_unread ?? 0) + (b.unfollow_unread ?? 0) };

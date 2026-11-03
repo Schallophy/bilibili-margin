@@ -62,7 +62,11 @@ function weatherBody() {
 
 /** 返回 JSON body；null 表示交给下一个规则 */
 export function apiBody(u) {
-  if (u.includes('/x/web-interface/wbi/index/top/feed/rcmd')) return { code: 0, data: { item: P.map((v, i) => ({ goto: 'av', ...arc(v, i), rcmd_reason: i % 4 === 0 ? { content: '已关注' } : undefined })) } };
+  if (u.includes('/x/web-interface/wbi/index/top/feed/rcmd')) {
+    const items = P.map((v, i) => ({ goto: 'av', ...arc(v, i), is_ad: i === 2, rcmd_reason: i % 4 === 0 ? { content: '已关注' } : undefined }));
+    items.push({ goto: 'av', ...arc(P[0], 99), bvid: 'BV1ad0000000', title: '广告推广视频', is_ad: true });
+    return { code: 0, data: { item: items } };
+  }
   if (u.includes('/x/web-interface/popular')) return { code: 0, data: { list: P.map(arc), no_more: true } };
   if (u.includes('fav/folder/created/list')) return { code: 0, data: { count: 3, list: [{ id: 101, title: '默认收藏夹', media_count: 42, cover: P[1].pic, attr: 0 }, { id: 202, title: '动效参考', media_count: 17, cover: P[4].pic, attr: 2 }, { id: 303, title: '字体与排版', media_count: 8, cover: '', attr: 3 }] } };
   if (u.includes('fav/resource/list')) return { code: 0, data: { has_more: false, medias: P.slice(0, 8).map((v) => ({ type: 2, attr: 0, bvid: v.bvid, title: v.title, cover: v.pic, duration: v.dur, upper: { name: v.name, mid: v.mid, face: v.face }, cnt_info: { play: v.play, danmaku: 100 }, fav_time: v.pub })) } };
@@ -109,14 +113,63 @@ function placeholder(u) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${a} 45% 62%)"/><stop offset="1" stop-color="hsl(${b} 50% 38%)"/></linearGradient></defs><rect width="320" height="200" fill="url(#g)"/></svg>`;
 }
 
+const watchRec = (k, title, up, views, dur) => `<div class="video-page-card-small" data-k="${k}">
+  <div class="title">${title}</div><div class="upname">${up}</div>
+  ${views ? `<div class="playinfo">${views}播放</div>` : ''}${dur ? `<div class="duration">${dur}</div>` : ''}
+</div>`;
+
+const searchCard = (k, title, up, views, dur) => `<div class="bili-video-card" data-k="${k}">
+  <div class="bili-video-card__info--tit">${title}</div><div class="bili-video-card__info--author">${up}</div>
+  <div class="bili-video-card__stats">${views ? `<span class="bili-video-card__stats--item">${views}</span>` : ''}${dur ? `<span class="bili-video-card__stats__duration">${dur}</span>` : ''}</div>
+</div>`;
+
+const watchHtml = () => `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>哔哩哔哩 (゜-゜)つロ 干杯~-bilibili</title></head><body>
+<div id="app"><div class="video-container-v1"><div class="left-container"><div class="video-info-container"><h1 class="video-title">离线冒烟测试视频</h1></div>
+<div class="bpx-player-container" data-screen="normal" style="width:100%;aspect-ratio:16/9;background:#000">
+  <div class="bpx-player-video-wrap"><video muted playsinline></video></div>
+  <button class="bpx-player-ctrl-wide" type="button">宽屏</button>
+  <button class="bpx-player-ctrl-web" type="button">网页全屏</button>
+</div>
+<div id="commentapp"></div></div><div class="right-container"><div id="danmukuBox"></div><div class="recommend-list-v1">
+  ${watchRec('normal', '普通推荐视频', '正常UP', '12.3万', '10:00')}
+  ${watchRec('keyword', '屏蔽词测试视频', '正常UP', '12.3万', '10:00')}
+  ${watchRec('up', '被屏蔽 UP 的视频', '坏UP', '12.3万', '10:00')}
+  ${watchRec('low', '低播放视频', '正常UP', '12', '1:00')}
+  ${watchRec('missing', '缺播放量视频', '正常UP', '', '2:00')}
+</div><div class="video-card-ad-small" data-k="watch-ad">推广位</div></div></div>
+<script>
+  const pc = document.querySelector('.bpx-player-container');
+  document.querySelector('.bpx-player-ctrl-wide').addEventListener('click', () => { pc.dataset.screen = 'wide'; });
+  document.querySelector('.bpx-player-ctrl-web').addEventListener('click', () => { pc.dataset.screen = 'web'; });
+</script></body></html>`;
+
+const searchHtml = () => `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>搜索 - bilibili</title></head><body>
+<div id="app"><div class="search-content"><div class="video-list">
+  ${searchCard('normal', '普通搜索结果', '正常UP', '12.3万', '10:00')}
+  ${searchCard('keyword', '屏蔽词测试结果', '正常UP', '12.3万', '10:00')}
+  ${searchCard('up', '被屏蔽 UP 的结果', '坏UP', '12.3万', '10:00')}
+  ${searchCard('low', '低播放结果', '正常UP', '12', '1:00')}
+  ${searchCard('missing', '缺播放量结果', '正常UP', '', '2:00')}
+  <div class="video-list-item" data-k="ad"><div class="bili-video-card">
+    <div class="bili-video-card__info--tit">广告搜索结果</div><div class="bili-video-card__info--author">推广账号</div>
+    <div class="bili-video-card__info--ad">广告</div>
+  </div></div>
+</div></div></div></body></html>`;
+
+const popularHtml = () => `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>热门 - bilibili</title></head><body>
+<div id="app"><div class="popular-video-container">
+  <div class="video-card" data-k="normal"><div class="video-name">普通热门视频</div><div class="up-name">正常UP</div><div class="video-stat">12.3万播放</div><div class="duration">10:00</div></div>
+  <div class="video-card" data-k="keyword"><div class="video-name">屏蔽词热门视频</div><div class="up-name">正常UP</div><div class="video-stat">12.3万播放</div><div class="duration">10:00</div></div>
+</div></div></body></html>`;
+
 /** 原版页面的最小骨架：映间会把它藏起来或在上面换皮 */
 function stubHtml(u) {
-  const watch = /\/video\//.test(u);
   if (/\/opus\/\d/.test(u)) return opusHtml();
+  if (/search\.bilibili\.com/.test(u)) return searchHtml();
+  if (/\/v\/popular/.test(u)) return popularHtml();
+  if (/\/video\//.test(u)) return watchHtml();
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>哔哩哔哩 (゜-゜)つロ 干杯~-bilibili</title></head><body>
-<div id="app">${watch ? `<div class="video-container-v1"><div class="left-container"><div class="video-info-container"><h1 class="video-title">离线冒烟测试视频</h1></div>
-<div id="bilibili-player" style="width:100%;aspect-ratio:16/9;background:#000"></div><div id="commentapp"></div></div><div class="right-container"><div id="danmukuBox"></div><div class="recommend-list-v1"></div></div></div>`
-    : '<div class="bili-header"></div><main class="native">原版页面</main>'}</div></body></html>`;
+<div id="app"><div class="bili-header"></div><main class="native">原版页面</main></div></body></html>`;
 }
 
 /** 图文详情页骨架：和真实 opus 页的 SSR 结构一致（.opus-detail / .opus-module-* / 原生侧边工具条），带两个小标题测目录 */

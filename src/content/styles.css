@@ -1651,3 +1651,55 @@ canvas.gf-sheet-art[data-ready] { opacity: 1; filter: none; }
 .sd[data-open] .sd-in { padding: 4px 14px 12px; opacity: 1; }
 .sd-note { margin: 4px 0 10px; font: 400 12px/1.5 var(--sans); color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .sd-panel, .sd-in, .sd-chev { transition: none; } }
+
+/* v0.47 首页版块排序 */
+.home-order { display: flex; flex-direction: column; gap: 6px; }
+.home-order-row { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 6px 0 12px; border-radius: 10px; background: var(--chip); }
+.home-order-name { flex: 1; color: var(--ink); font-size: 13px; }
+.home-order-btns { display: inline-flex; gap: 4px; }
+.home-order-btn { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); font: 14px/1 var(--mono); cursor: pointer; }
+.home-order-btn:hover:not([disabled]) { color: var(--ink); border-color: color-mix(in srgb, var(--ink) 18%, transparent); }
+.home-order-btn[disabled] { opacity: .35; cursor: default; }
+
+/* v0.47 减少动画 / 过滤标记：Shadow DOM 不继承文档级 CSS，这里单独写一份 */
+[data-margin-filtered] { display: none !important; }
+.app.margin-reduce *,
+.app.margin-reduce *::before,
+.app.margin-reduce *::after {
+  animation-duration: .001ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app *,
+  .app *::before,
+  .app *::after {
+    animation-duration: .001ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* App 推荐流授权（v0.48 实验） */
+.af-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; }
+.af-stat { font: 400 12px/1.5 var(--sans); color: var(--muted); }
+.af-qr { width: 168px; margin: 12px auto 4px; padding: 8px; border-radius: 12px; background: #fff; box-shadow: var(--ring), var(--sh-sm); }
+.af-qr svg { display: block; width: 100%; height: auto; }
+.af-note { display: block; margin-top: 6px; text-align: center; font: 400 12px/1.5 var(--sans); color: var(--muted); }
+.af-note:empty { display: none; }
+.af-row [hidden] { display: none; }
+
+/* 背景随机范围（v0.48） */
+.pool-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pool-chip { height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--faint); font: 400 12px/1 var(--sans); cursor: pointer; transition: background-color .15s var(--ease-out), color .15s var(--ease-out), border-color .15s var(--ease-out); }
+.pool-chip[aria-pressed="true"] { background: var(--chip); color: var(--ink); border-color: color-mix(in srgb, var(--ink) 14%, transparent); }
+.pool-chip:hover { color: var(--ink); }
+/* 上一批（v0.48） */
+.bar-acts { display: flex; align-items: center; gap: 8px; }
+.bar .refresh.back[hidden] { display: none; }

@@ -8,12 +8,22 @@ import { createSunMoon, type SunMoon } from './sun-moon';
 import { attachTooltips } from './tooltip';
 import { BILI_TIGHT } from './intro/logo';
 import { liveTv } from './tv-eyes';
-import { attachHoverList, POPS } from './dyn-pop';
+import { attachHoverList, POPS, type PopHandle } from './dyn-pop';
+import type { FilterRuntime } from '../filter-runtime';
 
 /** 顶栏左上角的小电视：开场动画结束时图标就飞落到这里 */
 function tv(): HTMLElement { const s = h('span', { class: 'tv', 'aria-hidden': 'true' }); setMarkup(s, BILI_TIGHT); liveTv(s); return s; }
 
-export interface Header { el: HTMLElement; input: HTMLInputElement; sunMoon: SunMoon; /** 液态玻璃块：搜索框、快捷入口胶囊、选中滑块 */ glass: HTMLElement[]; thumb: HTMLElement }
+export interface Header {
+  el: HTMLElement;
+  input: HTMLInputElement;
+  sunMoon: SunMoon;
+  /** 液态玻璃块：搜索框、快捷入口胶囊、选中滑块 */
+  glass: HTMLElement[];
+  thumb: HTMLElement;
+  /** 消息提醒开关（v0.47）：关闭时不再轮询 unread，并清掉消息角标 */
+  setMsgRemind(on: boolean): void;
+}
 
 /** B 站原版顶栏的那组入口：直播、大会员、消息、动态、历史、创作中心（消息和动态带未读角标） */
 export const SITE_LINKS: TabSpec[] = [
@@ -27,7 +37,8 @@ export const SITE_LINKS: TabSpec[] = [
 ];
 
 /** 首页和播放页共用的顶栏：标志、搜索、Expandable Tabs、日月主题按钮、投稿、头像 */
-export function createHeader(o: { tabs: TabItem[]; onTheme: () => void; onSearch?: (q: string) => void }): Header {
+export function createHeader(o: { tabs: TabItem[]; onTheme: () => void; onSearch?: (q: string) => void; msgRemind?: () => boolean; filter?: FilterRuntime }): Header {
+  let msgOn = o.msgRemind?.() ?? true;
   const user = h('a', { class: 'user', href: 'https://passport.bilibili.com/login', target: '_blank', rel: 'noopener' }, '登录');
   const userSlot = h('div', { class: 'um-wrap' }, user);
   const upload = h('a', { class: 'upload', href: 'https://member.bilibili.com/platform/upload/video/frame', target: '_blank', rel: 'noopener' }, icon(ICONS.upload), h('span', {}, '投稿'));
@@ -51,9 +62,15 @@ export function createHeader(o: { tabs: TabItem[]; onTheme: () => void; onSearch
 
   const tabsNav = createExpandableTabs(o.tabs);
   // 直播 / 消息 / 动态 / 历史 / 收藏 / 稍后：停留 1.5 秒弹出悬停列表
+  let msgPop: PopHandle | null = null;
+  const popHandles: PopHandle[] = [];
   for (const b of tabsNav.buttons) {
-    const mk = POPS[b.getAttribute('aria-label') ?? ''];
-    if (mk) attachHoverList(b, mk({ onDyn: () => { resetDynamicBaseline(); tabsNav.badge('dyn', 0); } }));
+    const label = b.getAttribute('aria-label') ?? '';
+    const mk = POPS[label];
+    if (!mk) continue;
+    const pop = attachHoverList(b, mk({ onDyn: () => { resetDynamicBaseline(); tabsNav.badge('dyn', 0); }, msgRemind: () => msgOn }), o.filter);
+    popHandles.push(pop);
+    if (label === '消息') msgPop = pop;
   }
   // 顶栏入口自定义（v0.47.1）：隐藏的入口 hidden；B 站入口按设置里的顺序用 CSS order 排，分隔线和个人入口固定在后面
   const applyPrefs = (st: Settings) => {
@@ -69,6 +86,8 @@ export function createHeader(o: { tabs: TabItem[]; onTheme: () => void; onSearch
   };
   loadSettings().then(applyPrefs).catch(() => {});
   onSettingsChange((n, p) => { if (n.headHide.join() !== p.headHide.join() || n.headOrder.join() !== p.headOrder.join()) applyPrefs(n); });
+  // 屏蔽词/隐藏广告变化后，悬停列表的 60 秒缓存要失效
+  o.filter?.onChange(() => popHandles.forEach((p) => p.invalidate()));
   const sunMoon = createSunMoon(o.onTheme);
   const el = h('header', { class: 'top' },
     h('a', { class: 'brand', href: 'https://www.bilibili.com/', title: '首页', 'aria-label': '首页' }, tv()),
@@ -79,22 +98,42 @@ export function createHeader(o: { tabs: TabItem[]; onTheme: () => void; onSearch
   account().then((a) => {
     if (!a) return;
     userSlot.replaceWith(createUserMenu(a));
-    // 消息中心里点开消息后（v0.46）重新拉一次未读，顶栏角标立刻跟上
+    // 消息中心里点开消息后（v0.46）重新拉一次未读，顶栏角标立刻跟上；关闭消息提醒时完全忽略
     let unreadT = 0;
-    addEventListener('margin:unread', () => { clearTimeout(unreadT); unreadT = window.setTimeout(() => unreadTotal().then((n) => tabsNav.badge('msg', n)).catch(() => {}), 600); });
-    // 未读角标：页面可见时每 2 分钟问一次；切回标签页时立即刷新
+    addEventListener('margin:unread', () => {
+      if (!msgOn) return;
+      clearTimeout(unreadT); unreadT = window.setTimeout(() => unreadTotal().then((n) => tabsNav.badge('msg', n)).catch(() => {}), 600);
+    });
+    // 未读角标：页面可见时每 2 分钟问一次；切回标签页时立即刷新。
+    // 消息和动态分开轮询：关闭消息提醒只停消息，动态角标保持原逻辑。
     let polled = 0;
-    const poll = () => {
-      if (document.hidden) return;
+    const pollMsg = () => {
+      if (!msgOn || document.hidden) return;
       polled = Date.now();
       unreadTotal().then((n) => tabsNav.badge('msg', n)).catch(() => {});
+    };
+    const pollDyn = () => {
+      if (document.hidden) return;
+      polled = Date.now();
       dynamicUpdates().then((n) => tabsNav.badge('dyn', n)).catch(() => {});
     };
+    const poll = () => { pollDyn(); pollMsg(); };
     poll();
     every(120_000, poll);
     // 切回标签页时刷新一次（30 秒内刚问过就不重复问）
     document.addEventListener('visibilitychange', () => { if (Date.now() - polled > 30_000) poll(); });
   }).catch(() => {});
+
+  const setMsgRemind = (on: boolean) => {
+    if (msgOn === on) return;
+    msgOn = on;
+    if (!on) {
+      tabsNav.badge('msg', 0);
+      msgPop?.close();
+    } else if (!document.hidden) {
+      unreadTotal().then((n) => tabsNav.badge('msg', n)).catch(() => {});
+    }
+  };
 
   if (!user.classList.contains('in')) user.dataset.tip = '登录 B 站';
   search.dataset.tip = '搜索';
@@ -108,5 +147,5 @@ export function createHeader(o: { tabs: TabItem[]; onTheme: () => void; onSearch
     e.preventDefault();
     input.focus();
   });
-  return { el, input, sunMoon, glass: [search, tabsNav.el], thumb: tabsNav.thumb };
+  return { el, input, sunMoon, glass: [search, tabsNav.el], thumb: tabsNav.thumb, setMsgRemind };
 }

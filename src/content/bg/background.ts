@@ -7,6 +7,7 @@ import { setupQuad, ShaderProgram } from './program';
 import { h } from '../ui/dom';
 import { GlassLens } from './lens';
 import { GateFlow } from './gate';
+import { onMotionChange, reducedMotion } from '../motion';
 
 const LAST_KEY = 'margin:last-shader';
 
@@ -24,7 +25,6 @@ export class BackgroundLayer {
   private theme: 'light' | 'dark' = 'dark';
   private palette: Palette = 'classic';
   private cfg!: Background;
-  private reduced = matchMedia('(prefers-reduced-motion: reduce)');
   private lens: GlassLens | null = null;
   private lensEl: HTMLElement | null = null;
   private pending = 0;
@@ -33,9 +33,14 @@ export class BackgroundLayer {
     this.el.append(this.canvas, this.img, h('div', { class: 'bg-scrim' }));
     document.addEventListener('visibilitychange', () => (document.hidden ? this.stop() : this.loop()));
     new ResizeObserver(([e]) => { this.size = { w: e.contentRect.width, h: e.contentRect.height }; this.resize(); }).observe(this.el);
-    this.reduced.addEventListener('change', () => {
+    onMotionChange(() => {
       this.stop();
-      if (this.cfg?.mode === 'random' || this.cfg?.mode === 'fixed') { this.draw(performance.now()); this.loop(); }
+      this.syncLens();
+      if (this.cfg?.mode === 'random' || this.cfg?.mode === 'fixed') {
+        if (reducedMotion()) { this.kFrom = this.kTo = this.theme === 'dark' ? 1 : 0; this.kT0 = 0; }
+        this.draw(performance.now());
+        this.loop();
+      }
     });
   }
   /** 昼夜切换的调色板插值，时长/缓动和日月按钮一致（1740ms，cubic-bezier(.65,0,.35,1)） */
@@ -55,7 +60,7 @@ export class BackgroundLayer {
     const prevMode = this.cfg?.mode;
     this.cfg = cfg;
     const target = theme === 'dark' ? 1 : 0;
-    if (!first && theme !== this.theme && !this.reduced.matches && !this.soft) { this.kFrom = this.kNow(performance.now()); this.kTo = target; this.kT0 = performance.now(); }
+    if (!first && theme !== this.theme && !reducedMotion() && !this.soft) { this.kFrom = this.kNow(performance.now()); this.kTo = target; this.kT0 = performance.now(); }
     else { this.kFrom = this.kTo = target; this.kT0 = 0; }
     this.theme = theme;
     this.el.dataset.mode = cfg.mode;
@@ -73,7 +78,8 @@ export class BackgroundLayer {
     if (cfg.mode === 'random') {
       if (first || prevMode !== 'random' || !this.current) {
         const prev = localStorage.getItem(LAST_KEY);
-        const pool = SHADER_IDS.filter((s) => s !== prev);
+        const allowed = cfg.pool?.length ? SHADER_IDS.filter((s) => cfg.pool!.includes(s)) : SHADER_IDS;
+        const pool = allowed.length > 1 ? allowed.filter((s) => s !== prev) : allowed;
         id = pool[Math.floor(Math.random() * pool.length)];
         localStorage.setItem(LAST_KEY, id);
       } else id = this.current;
@@ -95,7 +101,7 @@ export class BackgroundLayer {
 
   /** 滚动等让透镜位置变化时调用：下一帧立刻重画，不等 30fps 节拍 */
   redraw(): void {
-    if (this.pending || !this.lensEl?.hasAttribute('data-lens') || document.hidden) return;
+    if (reducedMotion() || this.pending || !this.lensEl?.hasAttribute('data-lens') || document.hidden) return;
     this.pending = requestAnimationFrame(() => { this.pending = 0; this.draw(performance.now(), true); });
   }
 
@@ -104,7 +110,7 @@ export class BackgroundLayer {
   private soft = false;
 
   private syncLens(): void {
-    const on = !this.soft && !!this.lensEl && !!this.prog && (this.cfg?.mode === 'random' || this.cfg?.mode === 'fixed');
+    const on = !this.soft && !reducedMotion() && !!this.lensEl && !!this.prog && (this.cfg?.mode === 'random' || this.cfg?.mode === 'fixed');
     this.lensEl?.toggleAttribute('data-lens', on);
   }
 
@@ -145,7 +151,7 @@ export class BackgroundLayer {
   private gate: GateFlow | null = null;
   private gateT = 0;
   private focusEl: HTMLElement | null = null;
-  private onGateClick = (e: PointerEvent): void => { if (e.isPrimary && !this.reduced.matches) this.gate?.explode(e.clientX, e.clientY); };
+  private onGateClick = (e: PointerEvent): void => { if (e.isPrimary && !reducedMotion()) this.gate?.explode(e.clientX, e.clientY); };
   /** 汇流款的汇聚点：元素中心（首页是搜索栏）；不设时是屏幕中心 */
   setFocus(el: HTMLElement | null): void { this.focusEl = el; }
   private mountGate(): void {
@@ -179,7 +185,8 @@ export class BackgroundLayer {
   private draw(now: number, moveOnly = false): void {
     if (!this.gl || !this.prog) return;
     const gl = this.gl, w = this.canvas.width, hh = this.canvas.height;
-    const t = this.reduced.matches ? 12 : (now - this.start) / 1000;
+    const still = reducedMotion();
+    const t = still ? 12 : (now - this.start) / 1000;
     const rect = this.lensRect();
     // 滚动触发、而玻璃一直在屏幕外：画面没有变化，什么都不用画
     if (moveOnly && !rect && !this.hadRect) return;
@@ -209,7 +216,8 @@ export class BackgroundLayer {
       const now = performance.now();
       const step = this.gateT ? Math.min(4, (now - this.gateT) / (1000 / 60)) : 1;
       this.gateT = now;
-      this.gate.render(this.reduced.matches ? 0 : step, k, !this.reduced.matches);
+      const still = reducedMotion();
+      this.gate.render(still ? 0 : step, k, !still);
     }
   }
 
@@ -219,6 +227,7 @@ export class BackgroundLayer {
   private fluxTex: WebGLTexture | null = null;
   private stepFlux(w: number, hh: number, t: number, k: number): void {
     const gl = this.gl!, prog = this.prog!;
+    if (reducedMotion()) return;
     if (!this.flux) {
       if (this.soft || this.fluxLoading || this.fluxFailed || !('gpu' in navigator)) return;
       this.fluxLoading = true;
@@ -295,7 +304,7 @@ export class BackgroundLayer {
   private loop = (): void => {
     if (this.soft || this.holds.size) return;
     if (this.raf || !this.cfg || (this.cfg.mode !== 'random' && this.cfg.mode !== 'fixed') || document.hidden) return;
-    if (this.reduced.matches && !this.kT0) return;
+    if (reducedMotion() && !this.kT0) return;
     const tick = (now: number) => {
       this.raf = 0;
       // 开场盖住整页时不画，开场一结束接着画
@@ -316,7 +325,7 @@ export class BackgroundLayer {
         if (!this.nextFrame || now - this.nextFrame > fm * 2) this.nextFrame = now;
         this.nextFrame += fm;
       }
-      if (this.reduced.matches && !this.kT0) return;
+      if (reducedMotion() && !this.kT0) return;
       this.raf = requestAnimationFrame(tick);
     };
     this.raf = requestAnimationFrame(tick);

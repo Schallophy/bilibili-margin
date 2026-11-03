@@ -2,6 +2,20 @@
 
 # Changelog
 
+## [v0.48.0](https://github.com/jiuyang5354/bilibili-margin/releases/tag/v0.48.0) · 2026-11-03
+
+- Experimental "App feed" (Settings → Experimental, off by default): the home Recommended tab uses the Bilibili mobile app's recommendation API. Scan a QR code once with the Bilibili app to get the same personalised feed as on your phone; without it you get the non-personalised app feed. "Not interested" and blocking an uploader are sent back to the app feed. The token stays on this device and can be revoked any time. API and QR flow based on bilibili-API-collect and BewlyBewly's "Authorize app" (MIT), reimplemented natively.
+- Experimental "X-style rerank" (off by default): following the candidate → scoring → filtering stages of X's open-source recommender, home recommendations are reordered on this device: uploaders you finish watching move up, quick exits (under 10 s) and "Not interested" move down; each batch mixes in up to 3 videos from people you follow posted in the last 48 hours (tagged "Following · new"); watched videos are dropped and the same uploader never appears twice in a row. Preferences come only from Bilibili's own watch history (cached for 6 hours); negative feedback stays local. Works together with the App feed.
+- Merged PR #10 (@zwh-study): Reduce motion, global block words (search, watch-page recommendations, popular / ranking / bangumi too), global wide mode, hide ads (on by default, display only), home section order, and a message reminder toggle.
+- Fix: the first ~1 s of a video played twice on open. The watch-page card backdrop was inserted into the left column before Bilibili's SSR page finished hydrating, so Vue saw a DOM mismatch, re-rendered the page and rebuilt the player; it now waits for hydration. Thanks to @K-aloy for the report.
+- Home: a "Previous batch" button next to "Refresh" brings back the batch you just replaced (click again to go forward). Thanks to @K-aloy for suggesting it, and to @我是真的小心眼 for the feedback.
+- Background: new "Random pool" — random mode only picks from the styles you keep lit. Thanks to @K-aloy for suggesting it.
+- Messages: replies / mentions show your quoted comment first (thin left rule) and then their reply, so short lines no longer look like two replies; the DM panel now fills to the bottom of the window. Thanks to @K-aloy for the feedback.
+- Fix: in web fullscreen the mouse wheel scrolled the page instead of changing volume (side effect of v0.43's scrollable web fullscreen). While the player fills the screen, the wheel over the picture changes volume as usual; over the bottom control strip, or once you have scrolled down to the comments, it only scrolls and no longer touches the volume. Thanks to @bgbfbfb for the report.
+- Fix: long-pressing Like for the triple action only spun the ring once if you let go as soon as it filled. Margin's ring fills in 1.5 s but Bilibili's own long press needs longer; once the ring is full Margin now keeps the press held until Bilibili's triple lands (up to 2.5 s). Thanks to @阿埋为爱拉磨中 for the report.
+- Fix: the message badge could keep one unread that never cleared. Unread counts now use the same newer endpoint as Bilibili's own header (falling back to the old one). Thanks to @-九条泷川- for the report.
+- New host permission `app.bilibili.com`: the app feed API has no CORS, so it is requested from the extension's background worker; nothing is requested while the feature is off.
+
 ## [v0.47.4](https://github.com/jiuyang5354/bilibili-margin/releases/tag/v0.47.4) · 2026-11-02
 
 - Messages: images in a chat open in an in-page lightbox (← → to switch, Esc to close); Ctrl-click still opens the original in a new tab.
