@@ -1,4 +1,4 @@
-import { previewUrl } from '../api/play';
+import { cidOf, previewUrl } from '../api/play';
 import { cardData } from './card';
 import { h } from './dom';
 
@@ -18,14 +18,18 @@ export function attachPreview(container: HTMLElement, enabled: () => boolean): v
   };
 
   container.addEventListener('mouseover', (e) => {
-    const cover = (e.target as Element).closest?.('.cover') as HTMLElement | null;
+    const cover = (e.target as Element).closest?.('.cover, .dy-vcover[data-bvid]') as HTMLElement | null;
     if (!cover || cover === active?.cover || !enabled()) return;
-    const card = cover.closest('.card');
+    const card = cover.closest('.card, .dy');
     const v = card && cardData.get(card);
-    if (!v?.cid) return;
+    // 动态卡的视频封面没有 cardData，从链接里取 BV 号（#2）
+    const bvid = v?.bvid ?? cover.getAttribute('data-bvid') ?? '';
+    if (!bvid) return;
     stop();
     timer = window.setTimeout(async () => {
-      const url = await previewUrl(v.bvid, v.cid);
+      const cid = v?.cid || await cidOf(bvid);
+      if (!cid) return;
+      const url = await previewUrl(bvid, cid);
       if (!url || !cover.matches(':hover')) return;
       const video = h('video', { muted: true, playsinline: true, loop: true, preload: 'auto', class: 'pv' }) as HTMLVideoElement;
       video.muted = true;
@@ -39,7 +43,7 @@ export function attachPreview(container: HTMLElement, enabled: () => boolean): v
     }, 500);
   });
   container.addEventListener('mouseout', (e) => {
-    const cover = (e.target as Element).closest?.('.cover');
+    const cover = (e.target as Element).closest?.('.cover, .dy-vcover[data-bvid]');
     if (!cover) return;
     const to = e.relatedTarget as Node | null;
     if (to && cover.contains(to)) return;

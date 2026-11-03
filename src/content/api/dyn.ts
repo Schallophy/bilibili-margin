@@ -5,9 +5,13 @@ import { getJSON } from './http';
 export interface Dyn {
   id: string; type: string; author: string; face: string; mid: number; ts: number; time: string;
   text: string; title?: string;
-  video?: { bvid: string; title: string; cover: string; dur: string; play: string; desc: string };
+  video?: { bvid: string; title: string; cover: string; dur: string; play: string; desc: string; ad?: boolean };
   pics: string[];
   article?: { title: string; cover: string; desc: string; url: string };
+  /** 直播（开播提醒 LIVE_RCMD / 直播间分享 LIVE），#4 */
+  live?: { title: string; cover: string; url: string; on: boolean; meta: string };
+  /** 其它带卡片的类型（合集、番剧、课程、音乐、通用卡片），统一成链接卡 */
+  link?: { title: string; cover: string; desc: string; url: string; kind: string };
   orig?: Dyn | null;
   stat: { comment: number; forward: number; like: number };
   url: string;
@@ -29,7 +33,8 @@ export function toDyn(it: any): Dyn | null {
   };
   if (major.archive) {
     const v = major.archive;
-    out.video = { bvid: v.bvid, title: v.title, cover: https(v.cover), dur: v.duration_text ?? '', play: v.stat?.play ?? '', desc: v.desc ?? '' };
+    const ad = v.is_ad === true || Boolean(v.ad_info) || Boolean(v.business_info) || undefined;
+    out.video = { bvid: v.bvid, title: v.title, cover: https(v.cover), dur: v.duration_text ?? '', play: v.stat?.play ?? '', desc: v.desc ?? '', ad };
     out.url = `https://www.bilibili.com/video/${v.bvid}`;
   }
   if (opus?.pics) out.pics = opus.pics.map((p: any) => https(p.url));
@@ -37,6 +42,24 @@ export function toDyn(it: any): Dyn | null {
   if (major.article) {
     const r = major.article;
     out.article = { title: r.title, cover: https(r.covers?.[0]), desc: r.desc ?? '', url: https(r.jump_url) };
+  }
+  if (major.live_rcmd) {
+    let c: any = {};
+    try { c = JSON.parse(major.live_rcmd.content || '{}'); } catch { /* ignore */ }
+    const li = c.live_play_info ?? {};
+    const url = https(li.link || (li.room_id ? `https://live.bilibili.com/${li.room_id}` : ''));
+    out.live = { title: li.title ?? '', cover: https(li.cover), url, on: li.live_status === 1 || c.live_status === 1 || !!li.live_start_time, meta: [li.area_name, li.watched_show?.text_large].filter(Boolean).join(' · ') };
+    if (url) out.url = url;
+  } else if (major.live) {
+    const l = major.live;
+    out.live = { title: l.title ?? '', cover: https(l.cover), url: https(l.jump_url), on: l.live_state === 1, meta: [l.desc_first, l.desc_second].filter(Boolean).join(' · ') };
+    if (out.live.url) out.url = out.live.url;
+  }
+  const lk = major.ugc_season ?? major.pgc ?? major.courses ?? major.music ?? major.common;
+  if (!out.video && !out.live && !out.article && lk) {
+    const kind = major.ugc_season ? '合集' : major.pgc ? '番剧' : major.courses ? '课程' : major.music ? '音乐' : (lk.badge?.text || '');
+    out.link = { title: lk.title ?? '', cover: https(lk.cover), desc: lk.desc ?? lk.sub_title ?? lk.label ?? '', url: https(lk.jump_url), kind };
+    if (out.link.url) out.url = out.link.url;
   }
   if (it.orig) out.orig = toDyn(it.orig);
   return out;

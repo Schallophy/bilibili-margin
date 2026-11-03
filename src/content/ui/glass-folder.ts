@@ -9,7 +9,8 @@
  * - 首次进入视口时自己组装；指针移动带视差与光斑；尊重 prefers-reduced-motion
  */
 import { fanSlot, hashString, paint, recipeOf, rng, type ArtPreset } from './folder-art';
-import { h } from './dom';
+import { h, setMarkup } from './dom';
+import { reducedMotion } from '../motion';
 
 export interface GFFile { name: string; meta?: string; image?: string; art?: ArtPreset; href?: string }
 export interface GFMenuItem { label: string; onSelect?: () => void; danger?: boolean }
@@ -24,6 +25,9 @@ export interface GFOptions {
   width?: number;
   appearDelay?: number;
   onOpenChange?: (open: boolean) => void;
+  /** 返回 true 时点击不弹出扇形文件，改为调用 onDirect（设置「收藏夹直接展开」） */
+  direct?: () => boolean;
+  onDirect?: () => void;
   onFileSelect?: (file: GFFile, index: number) => void;
 }
 export interface GlassFolderApi { el: HTMLElement; setFiles(files: GFFile[]): void; setOpen(open: boolean): void; isOpen(): boolean }
@@ -88,17 +92,18 @@ export function glassFolder(o: GFOptions): GlassFolderApi {
 
   // 毛玻璃前板（底边铰链）
   const grad = document.createElementNS(NS, 'defs');
-  grad.innerHTML = `<linearGradient id="${uid}-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".35" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#fff" stop-opacity=".12"/></linearGradient>`;
+  setMarkup(grad, `<linearGradient id="${uid}-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".35" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#fff" stop-opacity=".12"/></linearGradient>`);
   const hit = h('button', { type: 'button', class: 'gf-hit', 'aria-expanded': 'false' }) as HTMLButtonElement;
   const metaEl = h('span', { class: 'gf-meta' });
   // 毛玻璃不用 backdrop-filter：Chromium 里它在缩放 / 变换 / 滚动容器中会只模糊一块矩形，
   // 图片从玻璃里漏出来。改成把后板和视频复制一份放进前板里，用普通 filter 模糊这份副本
   // （与液态玻璃的「副本折射」同一思路），所有浏览器表现一致。
   const frost = h('div', { class: 'gf-frost', 'aria-hidden': 'true' });
+  const specEl = h('div', { class: 'gf-spec', 'aria-hidden': 'true' });
   const front = h('div', { class: 'gf-front', style: `clip-path:path('${FRONT_PATH}')` },
     frost,
     h('div', { class: 'gf-tint', 'aria-hidden': 'true' }),
-    h('div', { class: 'gf-spec', 'aria-hidden': 'true' }),
+    specEl,
     svg('gf-rim gf-front-rim', W, FRONT_H, FRONT_PATH, `url(#${uid}-rim)`, grad),
     hit,
     h('div', { class: 'gf-label' }, h('span', { class: 'gf-title' }, o.label), metaEl),
@@ -114,11 +119,12 @@ export function glassFolder(o: GFOptions): GlassFolderApi {
   glyph.setAttribute('class', 'gf-glyph gf-glyph--more');
   glyph.setAttribute('viewBox', '0 0 30 12');
   glyph.setAttribute('aria-hidden', 'true');
-  glyph.innerHTML = '<rect x="1" y="1.5" width="8" height="9" rx="3.4"/><rect x="11" y="1.5" width="8" height="9" rx="3.4"/><rect x="21" y="1.5" width="8" height="9" rx="3.4"/>';
+  setMarkup(glyph, '<rect x="1" y="1.5" width="8" height="9" rx="3.4"/><rect x="11" y="1.5" width="8" height="9" rx="3.4"/><rect x="21" y="1.5" width="8" height="9" rx="3.4"/>');
   key.append(glyph);
   const menu = h('div', { class: 'gf-menu', role: 'menu', id: `${uid}-menu`, 'aria-label': `${o.label} 选项` });
 
-  tilt.append(h('div', { class: 'gf-shadow', 'aria-hidden': 'true' }), back, svg('gf-rim gf-back-rim', W, H, BACK_PATH), front, filesEl, key, menu);
+  const shadowEl = h('div', { class: 'gf-shadow', 'aria-hidden': 'true' });
+  tilt.append(shadowEl, back, svg('gf-rim gf-back-rim', W, H, BACK_PATH), front, filesEl, key, menu);
   stage.append(tilt);
   root.append(stage);
 
@@ -220,21 +226,34 @@ export function glassFolder(o: GFOptions): GlassFolderApi {
   let pointerX = 0, pointerY = 0, tracking = false;
   const write = () => {
     raf = 0;
+    if (reducedMotion()) {
+      tilt.style.transform = '';
+      shadowEl.style.transform = '';
+      specEl.style.transform = '';
+      root.querySelectorAll<HTMLElement>('.gf-art').forEach((a) => { a.style.transform = ''; });
+      return;
+    }
     if (tracking) {
       const r = root.getBoundingClientRect();
       px = ((pointerX - r.left) / r.width) * 2 - 1;
       py = ((pointerY - r.top) / r.height) * 2 - 1;
     } else px = py = 0;
-    root.style.setProperty('--gf-px', px.toFixed(3)); root.style.setProperty('--gf-py', py.toFixed(3));
+    // v0.45：直接写这几层的 transform，不再改根上的 CSS 变量（那会让整棵子树连同模糊副本一起重算样式，
+    // 光斑也不再改渐变位置而是平移，免得每次移动都重绘）
+    tilt.style.transform = px || py ? `translate(${(px * 3).toFixed(2)}px, ${(py * 2).toFixed(2)}px)` : '';
+    shadowEl.style.transform = px ? `translateX(${(px * -8).toFixed(2)}px)` : '';
+    const art = px || py ? `translate(${(px * -7).toFixed(2)}px, ${(py * -6).toFixed(2)}px) scale(1.02)` : '';
+    root.querySelectorAll<HTMLElement>('.gf-art').forEach((a) => { a.style.transform = art; });
+    specEl.style.transform = px || py ? `translate(${(px * W * 0.46).toFixed(1)}px, ${(py * FRONT_H * 0.4).toFixed(1)}px)` : '';
   };
   root.addEventListener('pointermove', (e) => {
-    if (e.pointerType === 'touch') return;
+    if (e.pointerType === 'touch' || reducedMotion()) return;
     pointerX = e.clientX; pointerY = e.clientY; tracking = true;
     if (!raf) raf = requestAnimationFrame(write);
   });
   root.addEventListener('pointerleave', () => { tracking = false; if (!raf) raf = requestAnimationFrame(write); });
 
-  hit.addEventListener('click', () => { setMenu(false); setOpen(!open); });
+  hit.addEventListener('click', () => { setMenu(false); if (o.direct?.()) { if (open) setOpen(false); o.onDirect?.(); return; } setOpen(!open); });
   key.addEventListener('click', () => setMenu(!menuOpen));
   menu.addEventListener('keydown', (e) => {
     const items = [...menu.querySelectorAll<HTMLElement>('[role=menuitem]')];

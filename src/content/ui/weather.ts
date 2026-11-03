@@ -1,8 +1,9 @@
 import { every } from '../sched';
 import { introActive } from './intro/gate';
-import { h } from './dom';
+import { appendMarkup, h } from './dom';
 import { weather, geocode, setLoc, savedLoc, type Wx } from '../api/weather';
 import { WEATHER_SKIES, WEATHER_SKY_LAYERS, moonAge, weatherScene, glyphSvg, SKY_PITCH, FRAME } from './dotsky';
+import { onMotionChange, reducedMotion } from '../motion';
 
 /**
  * 首页天气卡：21st「Weather Widget」（vijayksingh）的横版排法——
@@ -20,7 +21,6 @@ export function createWeather(): HTMLElement {
   let wx: Wx | null = null;
   let tick = 0, visible = false;
   let stop: (() => void) | null = null;
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 
   const localHour = () => {
     const d = new Date(Date.now() + (wx?.offset ?? 0) * 1000);
@@ -52,18 +52,33 @@ export function createWeather(): HTMLElement {
     }
   };
   const clockEl = h('span', { class: 'wx-clock' });
+  // 时钟单独一个 15 秒的周期任务（v0.47，评论区：右上角时间停在打开页面那一刻）：
+  // 以前跟着天空动画走，滚动中、打开面板、系统开了「减少动画」时动画暂停，时钟也跟着不动了。
+  // 「减少动画」时天空不逐帧动，但太阳 / 月亮位置仍按当地时间每 15 秒重画一次。
+  let stopClock: (() => void) | null = null;
+  let fetchedAt = 0;
+  const minute = () => {
+    clockEl.textContent = clock();
+    if (reducedMotion()) paint();
+    if (Date.now() - fetchedAt > 30 * 60_000) { fetchedAt = Date.now(); load(true); } // 天气数据半小时刷新一次
+  };
   const run = () => {
     stop?.(); stop = null;
+    stopClock?.(); stopClock = null;
     const app = el.closest('.app');
-    if (!wx || !visible || reduced.matches || document.hidden) return;
+    if (!wx || !visible || document.hidden) return;
+    minute();
+    stopClock = every(15_000, minute);
+    if (reducedMotion()) return;
     stop = every(FRAME, () => {
-      if (app?.classList.contains('scrolling') || introActive()) return;
+      if (app?.classList.contains('scrolling') || app?.classList.contains('sheeted') || introActive()) return;
       tick++; paint();
-      if (tick % 60 === 0) clockEl.textContent = clock();
     });
   };
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; run(); }).observe(el);
   document.addEventListener('visibilitychange', run);
+  onMotionChange(run);
+  addEventListener('margin:wx-loc', () => load());
 
   const editCity = (place: HTMLElement) => {
     const input = h('input', { class: 'wx-city-in', value: wx?.loc.name ?? '', 'aria-label': '城市', placeholder: '输入城市' }) as HTMLInputElement;
@@ -99,7 +114,7 @@ export function createWeather(): HTMLElement {
     const hours = h('ol', { class: 'wx-hours', 'aria-label': '未来几个时段' },
       ...w.hours.map((x) => {
         const li = h('li', { 'aria-label': `${x.label} ${deg(x.temp)}` }, h('span', { class: 'wx-hl' }, x.label));
-        li.insertAdjacentHTML('beforeend', glyphSvg(x.kind, x.hour));
+        appendMarkup(li, glyphSvg(x.kind, x.hour));
         li.append(h('b', {}, deg(x.temp)));
         return li;
       }));
@@ -121,9 +136,9 @@ export function createWeather(): HTMLElement {
     const week = h('ul', { class: 'wx-week', 'aria-label': '未来三天' },
       ...days.map((d, i) => {
         const li = h('li', { 'aria-label': `${d.name} ${deg(d.low)} 到 ${deg(d.high)}`, 'data-kind': d.kind }, h('span', { class: 'wx-dn' }, d.name));
-        li.insertAdjacentHTML('beforeend', glyphSvg(d.kind));
+        appendMarkup(li, glyphSvg(d.kind));
         li.append(h('span', { class: 'wx-lo' }, deg(d.low)));
-        li.insertAdjacentHTML('beforeend', bar(d.low, d.high, i === 0 ? w.temp : undefined));
+        appendMarkup(li, bar(d.low, d.high, i === 0 ? w.temp : undefined));
         li.append(h('span', { class: 'wx-hi' }, deg(d.high)));
         return li;
       }));
@@ -138,9 +153,11 @@ export function createWeather(): HTMLElement {
   };
 
   let tries = 0;
-  const load = () => {
+  const load = (quiet = false) => {
+    if (!quiet) fetchedAt = Date.now();
     weather().then((x) => { wx = x; render(); }).catch((err) => {
       console.warn('[margin] weather', err);
+      if (quiet && wx) return; // 后台刷新失败：保留旧数据
       if (tries++ < 2) { setTimeout(load, 4000 * tries); return; }
       el.replaceChildren(h('p', { class: 'wx-empty', title: String(err) }, `天气暂时取不到${savedLoc()?.name ? `（${savedLoc()!.name}）` : ''}`));
     });

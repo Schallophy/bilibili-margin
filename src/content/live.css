@@ -1,0 +1,28 @@
+/* 映间 MARGIN · 直播间（v0.47.2，评论区：直播页还是原版，有割裂感）
+   只换外观：顶栏换成映间顶栏，房间皮肤背景换成画布色，播放器和弹幕栏变圆角卡片。播放器、弹幕、礼物、发言的行为都不动。
+   活动页（整页模板 + iframe 里的房间）不处理。 */
+html.margin-live .link-navbar-ctnr, html.margin-live #link-navbar-vm { display: none !important; }
+html.margin-live, html.margin-live body, html.margin-live .live-room-app, html.margin-live .app-content {
+  background-color: var(--m-canvas) !important; background-image: none !important;
+}
+html.margin-live body { font-family: var(--m-sans) !important; }
+html.margin-live #room-background-vm, html.margin-live .room-bg, html.margin-live .room-bg-webp { display: none !important; }
+html.margin-live .app-body { margin-top: 16px !important; }
+html.margin-live #player-ctnr { border-radius: var(--m-radius); overflow: hidden; box-shadow: var(--ring), var(--sh-md); background: var(--m-surface) !important; }
+html.margin-live #head-info-vm { background: var(--m-surface) !important; background-image: none !important; color: var(--m-ink) !important; border: 0 !important; }
+html.margin-live #head-info-vm .room-owner-username, html.margin-live #head-info-vm .live-title .text,
+html.margin-live #head-info-vm .text-ellipsis, html.margin-live #head-info-vm .upper-right-area * { color: var(--m-ink) !important; }
+html.margin-live #head-info-vm .lower-row *, html.margin-live #head-info-vm .room-owner-info * { color: var(--m-muted); }
+html.margin-live .room-owner-username { font: 600 16px/1.3 var(--m-serif) !important; }
+html.margin-live #aside-area-vm { border-radius: var(--m-radius); overflow: hidden; box-shadow: var(--ring), var(--sh-md); background: var(--m-surface) !important; }
+html.margin-live .chat-history-panel, html.margin-live #chat-control-panel-vm { background: var(--m-surface) !important; background-image: none !important; }
+html.margin-live .chat-history-panel .chat-item .danmaku-item-right { color: var(--m-ink) !important; }
+html.margin-live .chat-history-panel .chat-item.important-prompt-item,
+html.margin-live .chat-history-panel .chat-item .danmaku-item-left .open-medal-popup { opacity: .92; }
+html.margin-live #chat-control-panel-vm .chat-input-ctnr, html.margin-live #chat-control-panel-vm textarea {
+  background: var(--m-chip) !important; color: var(--m-ink) !important; border-color: var(--m-line) !important; border-radius: 12px !important;
+}
+html.margin-live .rank-list-section, html.margin-live .rank-list-ctnr { background: var(--m-surface) !important; border-bottom: 1px solid var(--m-line) !important; }
+html.margin-live .link-footer { background: var(--m-canvas) !important; border-top: 1px solid var(--m-line); }
+html.margin-live .link-footer, html.margin-live .link-footer a { color: var(--m-muted) !important; }
+html.margin-live #sections-vm, html.margin-live .room-info-ctnr { background: transparent !important; }

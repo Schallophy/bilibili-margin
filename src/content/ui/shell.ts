@@ -9,6 +9,8 @@ import { createLaterDrawer } from './drawer';
 import { createFavorites } from './favorites';
 import { attachPreview } from './preview';
 import type { SunMoon } from './sun-moon';
+import { FilterRuntime } from '../filter-runtime';
+import { reducedMotion } from '../motion';
 import css from '../styles.css?inline';
 import pagesCss from '../takeover.css?inline';
 
@@ -22,6 +24,7 @@ export class PageShell {
   readonly app: HTMLElement;
   readonly main: HTMLElement;
   readonly head: Header;
+  readonly filter: FilterRuntime;
   private sunMoon: SunMoon;
   private bg = new BackgroundLayer();
   private panel: SettingsPanel;
@@ -32,13 +35,15 @@ export class PageShell {
     this.host = h('div', { id: 'margin-root' });
     this.root = this.host.attachShadow({ mode: 'open' });
     this.root.append(h('style', {}, css + '\n' + pagesCss));
+    this.filter = new FilterRuntime(settings);
     this.panel = createSettingsPanel(() => this.settings, () => this.bg.shader);
-    const fav = createFavorites((g) => attachPreview(g, () => this.settings.hoverPreview));
-    const later = createLaterDrawer(() => this.app);
+    const fav = createFavorites((g) => attachPreview(g, () => this.settings.hoverPreview), undefined, this.filter);
+    const later = createLaterDrawer(() => this.app, this.filter);
     this.head = createHeader({
       onTheme: () => this.toggleTheme(),
+      msgRemind: () => this.settings.msgRemind,
+      filter: this.filter,
       tabs: [
-        { title: '首页', icon: ICONS.logo, href: 'https://www.bilibili.com/' },
         ...SITE_LINKS,
         'separator',
         { title: '收藏', icon: ICONS.fav, run: () => fav.open() },
@@ -54,12 +59,23 @@ export class PageShell {
       h('footer', { class: 'foot tk-foot' }, exit, h('span', {}, '映间 MARGIN · 非 B 站官方')),
       this.panel.sheet.el, fav.el, later.el,
     );
+    // 侧板开着时背景定格：侧板的毛玻璃（backdrop-filter）只有在底下画面变化时才需要每帧重算（v0.45）
+    this.app.addEventListener('margin:sheet', () => { const on = !!this.app.querySelector('.sheet-layer[data-open="true"]'); this.app.classList.toggle('sheeted', on); this.bg.hold('sheet', on); });
     this.root.append(this.app);
     const lg = filtersIn(this.root);
     this.head.glass.forEach((g) => attachGlass(g, lg));
     attachGlass(this.head.thumb, lg, { blur: 2, strength: 0.4 });
     this.applyTheme();
     this.media.addEventListener('change', () => this.applyTheme());
+    // 滚动时背景停一停，毛玻璃不用每帧重算（v0.43）
+    let st = 0;
+    const onScroll = () => {
+      if (!st) this.bg.hold('scroll', true);
+      clearTimeout(st);
+      st = window.setTimeout(() => { st = 0; this.bg.hold('scroll', false); }, 160);
+    };
+    this.app.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true });
   }
 
   /** 页面里的胶囊控件也做成液态玻璃 */
@@ -68,7 +84,9 @@ export class PageShell {
   update(s: Settings): void {
     const prev = this.settings;
     this.settings = s;
-    if (prev.theme !== s.theme || prev.palette !== s.palette || JSON.stringify(prev.bg) !== JSON.stringify(s.bg)) this.applyTheme();
+    this.filter.update(s);
+    if (prev.reduceMotion !== s.reduceMotion || prev.theme !== s.theme || prev.palette !== s.palette || JSON.stringify(prev.bg) !== JSON.stringify(s.bg)) this.applyTheme();
+    this.head.setMsgRemind(s.msgRemind);
     this.panel.sync(s);
   }
 
@@ -82,14 +100,15 @@ export class PageShell {
     this.app.dataset.theme = t;
     this.app.dataset.palette = this.settings.palette;
     this.app.dataset.bg = this.settings.bg.mode;
+    this.app.classList.toggle('margin-reduce', this.settings.reduceMotion);
     document.documentElement.style.background = t === 'dark' ? '#111' : '#f5f4f1';
-    this.sunMoon.set(t);
+    this.sunMoon.set(t, !reducedMotion());
     this.bg.apply(this.settings.bg, t, this.settings.palette).then(() => this.panel.sync(this.settings));
   }
 
   private async toggleTheme(): Promise<void> {
     const next = this.resolved() === 'dark' ? 'light' : 'dark';
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (!reducedMotion()) {
       this.app.classList.add('theme-fading');
       this.app.style.setProperty('--fade', `${this.sunMoon.duration}ms`);
       clearTimeout(this.fadeTimer);

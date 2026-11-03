@@ -1,5 +1,7 @@
+import { loadSettings, onSettingsChange } from '../../shared/settings';
 import { account, accountStat, dynamicUpdates, logout, resetDynamicBaseline, unreadTotal, type Account } from '../api/account';
-import { fmtCount, h, icon, ICONS } from './dom';
+import { fmtCount, h, icon, ICONS, setMarkup } from './dom';
+import { reducedMotion } from '../motion';
 
 /**
  * 头像卡片：移植用户贴来的 21st「ID Card Lanyard」——
@@ -27,14 +29,16 @@ type Pt = { x: number; y: number; oldx: number; oldy: number; pinned: boolean };
 function qr(text: string, small = false): HTMLElement {
   const el = h('div', { class: small ? 'idcl-qr idcl-small' : 'idcl-qr', title: text });
   // 二维码库（约 44KB）按需加载：卡片挂上后才画
-  import('qrcode-generator').then(({ default: qrcode }) => {
+  // 空闲时再画（首页加载时生成两张码约 40ms，v0.44）
+  const idle = (globalThis.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 1500))) as (f: () => void, o?: { timeout: number }) => void;
+  idle(() => import('qrcode-generator').then(({ default: qrcode }) => {
     const q = qrcode(0, 'M');
     q.addData(text); q.make();
     const n = q.getModuleCount();
     let d = '';
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`;
-    el.innerHTML = `<svg viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges" aria-hidden="true"><path d="${d}"/></svg>`;
-  }).catch(() => {});
+    setMarkup(el, `<svg viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges" aria-hidden="true"><path d="${d}"/></svg>`);
+  }).catch(() => {}), { timeout: 4000 });
   return el;
 }
 
@@ -48,12 +52,39 @@ function barcode(mid: number): HTMLElement {
   return el;
 }
 
+// 设置「账号卡片可拖拽」（v0.46，B 站评论建议）：关掉后卡片固定挂着，只能点击翻面
+let idDrag = true;
+// 消息提醒（v0.47）：关闭后账号卡片不再请求未读总数
+let msgRemind = true;
+const msgCards = new Set<(on: boolean) => void>();
+loadSettings().then((s) => { idDrag = s.idDrag; msgRemind = s.msgRemind; }).catch(() => {});
+onSettingsChange((s) => {
+  idDrag = s.idDrag;
+  const on = s.msgRemind;
+  if (on !== msgRemind) { msgRemind = on; msgCards.forEach((f) => f(on)); }
+});
+
 export function createUserMenu(a: Account): HTMLElement {
   const face = (px: number) => `${a.face}@${px}w_${px}h_1c.webp`;
   const trigger = h('a', { class: 'user in', href: `https://space.bilibili.com/${a.mid}`, target: '_blank', rel: 'noopener', 'aria-haspopup': 'dialog', 'aria-label': a.name },
     h('img', { src: face(80), alt: '', referrerpolicy: 'no-referrer' }));
   const wrap = h('div', { class: 'um-wrap' }, trigger);
+  // 账号卡片（约 150 个节点 + 两张大头像 + 物理画布）等第一次悬停 / 聚焦时才建（v0.44：页面加载省约 40ms 和两张图片请求）
+  let built = false;
+  const first = (e: Event) => {
+    if (built) return;
+    built = true;
+    wrap.removeEventListener('pointerenter', first);
+    wrap.removeEventListener('focusin', first);
+    mountCard(a, wrap, trigger, face);
+    wrap.dispatchEvent(e.type === 'focusin' ? new FocusEvent('focusin', e as FocusEvent) : new PointerEvent('pointerenter', e as PointerEvent));
+  };
+  wrap.addEventListener('pointerenter', first);
+  wrap.addEventListener('focusin', first);
+  return wrap;
+}
 
+function mountCard(a: Account, wrap: HTMLElement, trigger: HTMLElement, face: (px: number) => string): void {
   /* ── 卡面 ───────────────────────────────────────── */
   const space = `https://space.bilibili.com/${a.mid}`;
   const n = (v: string) => h('b', {}, v);
@@ -77,7 +108,8 @@ export function createUserMenu(a: Account): HTMLElement {
       h('div', { class: 'idcl-pillars' },
         h('span', {}, `LV${a.level}`), h('span', {}, `UID ${a.mid}`), h('i'))),
     h('div', { class: 'idcl-photo' },
-      h('img', { class: 'idcl-photo-bg', src: face(96), alt: '', referrerpolicy: 'no-referrer' }),
+      // 背景用 24px 小图放大，靠插值自然变糊，不再用 filter: blur（随卡片每帧旋转时 Firefox 要重新栅格化）
+      h('img', { class: 'idcl-photo-bg', src: face(24), alt: '', referrerpolicy: 'no-referrer' }),
       h('img', { class: 'idcl-photo-face', src: face(240), alt: '', referrerpolicy: 'no-referrer' }),
       a.vip ? h('span', { class: 'idcl-verified', title: role }, svgCheck()) : ''),
     name,
@@ -130,10 +162,11 @@ export function createUserMenu(a: Account): HTMLElement {
     h('div', { class: 'idcl-connect' },
       h('span', {}, '快捷入口'),
       h('div', { class: 'idcl-connect-icons' },
-        dot('收藏', ICONS.fav, `${space}/favlist`),
+        dot('收藏', ICONS.fav, 'https://www.bilibili.com/#fav'),
         dot('历史记录', ICONS.history, 'https://www.bilibili.com/account/history'),
-        dot('稍后再看', ICONS.later, 'https://www.bilibili.com/watchlater/#/list'),
-        dot('动态', ICONS.moments, 'https://t.bilibili.com/'))),
+        dot('稍后再看', ICONS.later, 'https://www.bilibili.com/#later'),
+        dot('动态', ICONS.moments, 'https://t.bilibili.com/'),
+        dot('直播', ICONS.live, 'https://live.bilibili.com/'))),
     h('div', { class: 'idcl-sig' },
       h('div', { class: 'idcl-script' }, a.name),
       h('div', { class: 'idcl-sigline' }, h('small', {}, 'Authorized Signature'), out)),
@@ -144,7 +177,8 @@ export function createUserMenu(a: Account): HTMLElement {
   const hint = h('div', { class: 'idcl-hint' }, h('span', {}, '拖动摇晃 · 点击翻面'));
   const canvas = h('canvas', { class: 'idcl-chain' }) as HTMLCanvasElement;
   const stage = h('div', { class: 'idcl-stage', hidden: '' }, card, canvas);
-  if (!localStorage.getItem(HINT_KEY)) card.append(hint);
+  if (/firefox/i.test(navigator.userAgent)) stage.classList.add('idcl-lite');
+  if (idDrag && !localStorage.getItem(HINT_KEY)) card.append(hint);
 
   /* ── 物理（原组件逻辑） ─────────────────────────── */
   const ctx = canvas.getContext('2d')!;
@@ -157,12 +191,18 @@ export function createUserMenu(a: Account): HTMLElement {
   const tiltTarget = { x: 0, y: 0 }, tiltCurrent = { x: 0, y: 0 };
   let mouse = { x: -9999, y: -9999 };
   let raf = 0, isOpen = false, dpr = 1, t = 0, restX = 0, gx = 0, restAngle = 0;
+  const syncMsgRemind = (on: boolean) => {
+    if (!on) { unreadN.textContent = '—'; unreadN.classList.remove('hot'); }
+    else if (isOpen) unreadTotal().then((v) => mark(unreadN, v)).catch(() => {});
+  };
+  msgCards.add(syncMsgRemind);
 
   const resize = () => {
     const r = trigger.getBoundingClientRect();
     dpr = Math.min(2, devicePixelRatio || 1);
     canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
     canvas.style.width = `${innerWidth}px`; canvas.style.height = `${innerHeight}px`;
+    dirty = { l: 0, t: 0, r: innerWidth, b: innerHeight };
     // 珠链从头像底部垂下，穿进工牌顶上的孔；卡片太靠右会出视口，就让链子静止时往左斜一点
     anchor.x = r.left + r.width / 2;
     anchor.y = r.bottom - 3;
@@ -204,9 +244,11 @@ export function createUserMenu(a: Account): HTMLElement {
   };
   // 珠链：沿绳子每 4.4px 一颗金属小珠，珠子之间一根细连杆
   const BEAD_GAP = 4.4, BEAD_R = 1.9;
+  let dirty = { l: 0, t: 0, r: 0, b: 0 };
   const drawChain = () => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    // 只擦上一帧画过的范围（整屏 clearRect 在高分屏上每帧要清几百万像素）
+    ctx.clearRect(dirty.l, dirty.t, dirty.r - dirty.l, dirty.b - dirty.t);
     const dark = stage.closest('.app')?.getAttribute('data-theme') === 'dark';
     const beads: { x: number; y: number }[] = [];
     let carry = 0;
@@ -237,33 +279,41 @@ export function createUserMenu(a: Account): HTMLElement {
     ctx.beginPath(); ctx.ellipse(0, 1.5, 3.2, 4.6, 0, 0, Math.PI * 2);
     ctx.strokeStyle = dark ? '#d5d8dd' : '#7c8087'; ctx.lineWidth = 1.4; ctx.stroke();
     ctx.restore();
+    let l = Infinity, r = -Infinity, tp = Infinity, bt = -Infinity;
+    for (const p of points) { l = Math.min(l, p.x); r = Math.max(r, p.x); tp = Math.min(tp, p.y); bt = Math.max(bt, p.y); }
+    dirty = { l: l - 8, t: tp - 8, r: r + 8, b: bt + 10 };
   };
   const HOLE_Y = 20.5; // 孔中心离卡片顶部的距离（未缩放）
+  // 卡片几何缓存：以前每帧先写 left/top 再读 offsetLeft/offsetWidth，强制同步重排，Firefox 上尤其卡（用户反馈）
+  let cardW = 236, cardH = 460, cardX = 0, cardY = 0;
+  const measure = () => { cardW = card.offsetWidth || 236; cardH = card.offsetHeight || 460; };
   const positionCard = () => {
     const last = points[points.length - 1], prev = points[points.length - 2];
     // 减去静止时绳子的斜角，卡片静止时保持竖直，甩动时照常转
     const angle = Math.atan2(last.y - prev.y, last.x - prev.x) - Math.PI / 2 - restAngle;
-    card.style.left = `${last.x - card.offsetWidth / 2}px`;
-    card.style.top = `${last.y - HOLE_Y}px`;
-    card.style.transform = `rotate(${angle}rad) scale(${CARD_SCALE})`;
+    cardX = last.x - cardW / 2; cardY = last.y - HOLE_Y;
+    card.style.transform = `translate3d(${cardX.toFixed(2)}px,${cardY.toFixed(2)}px,0) rotate(${angle.toFixed(4)}rad) scale(${CARD_SCALE})`;
   };
+  let hovering = false, lastMx = '', lastMy = '';
   const updateTilt = () => {
     flipCurrent += (flipTarget - flipCurrent) * 0.16;
-    if (!dragging && mouse.x > -1000) {
-      const cx = card.offsetLeft + card.offsetWidth / 2, cy = card.offsetTop + card.offsetHeight / 2;
-      const dx = Math.max(-1, Math.min(1, (mouse.x - cx) / (card.offsetWidth / 2)));
-      const dy = Math.max(-1, Math.min(1, (mouse.y - cy) / (card.offsetHeight / 2)));
+    const over = !dragging && mouse.x > -1000;
+    if (over) {
+      const cx = cardX + cardW / 2, cy = cardY + cardH / 2;
+      const dx = Math.max(-1, Math.min(1, (mouse.x - cx) / (cardW / 2)));
+      const dy = Math.max(-1, Math.min(1, (mouse.y - cy) / (cardH / 2)));
       tiltTarget.y = dx * MAX_TILT; tiltTarget.x = -dy * MAX_TILT;
-      card.style.setProperty('--mx', `${Math.max(0, Math.min(100, ((mouse.x - card.offsetLeft) / card.offsetWidth) * 100))}%`);
-      card.style.setProperty('--my', `${Math.max(0, Math.min(100, ((mouse.y - card.offsetTop) / card.offsetHeight) * 100))}%`);
-      card.classList.add('idcl-hovering');
+      const mx = `${Math.round(Math.max(0, Math.min(100, ((mouse.x - cardX) / cardW) * 100)))}%`;
+      const my = `${Math.round(Math.max(0, Math.min(100, ((mouse.y - cardY) / cardH) * 100)))}%`;
+      if (mx !== lastMx) { card.style.setProperty('--mx', mx); lastMx = mx; }
+      if (my !== lastMy) { card.style.setProperty('--my', my); lastMy = my; }
     } else {
       tiltTarget.x = 0; tiltTarget.y = 0;
-      card.classList.remove('idcl-hovering');
     }
+    if (over !== hovering) { hovering = over; card.classList.toggle('idcl-hovering', over); }
     tiltCurrent.x += (tiltTarget.x - tiltCurrent.x) * 0.12;
     tiltCurrent.y += (tiltTarget.y - tiltCurrent.y) * 0.12;
-    flipper.style.transform = `rotateY(${flipCurrent + tiltCurrent.y}deg) rotateX(${tiltCurrent.x}deg)`;
+    flipper.style.transform = `rotateY(${(flipCurrent + tiltCurrent.y).toFixed(3)}deg) rotateX(${tiltCurrent.x.toFixed(3)}deg)`;
   };
   // 链子和卡片停稳后就不再每帧重算重画（以前打开期间一直 60fps 跑），指针一动或翻面再唤醒
   let still = 0;
@@ -284,6 +334,7 @@ export function createUserMenu(a: Account): HTMLElement {
   card.addEventListener('pointerdown', (e) => {
     if ((e.target as HTMLElement).closest('a, button')) return;
     e.preventDefault();
+    if (!idDrag) { downPos = pos(e); tapDown = true; return; }
     dragging = true; wake();
     if (!interacted) { interacted = true; hint.classList.add('idcl-hint-hidden'); localStorage.setItem(HINT_KEY, '1'); }
     card.setPointerCapture(e.pointerId);
@@ -302,7 +353,7 @@ export function createUserMenu(a: Account): HTMLElement {
     for (const p of points) { l = Math.min(l, p.x); r = Math.max(r, p.x); t = Math.min(t, p.y); b = Math.max(b, p.y); }
     return x >= l - 28 && x <= r + 28 && y >= t - 28 && y <= b + 4;
   };
-  let away = false;
+  let away = false, tapDown = false;
   let grab = { x: 0, y: 0 };
   const onMove = (e: PointerEvent) => {
     if (!e.isTrusted) return; // 页面脚本派发的合成事件不算
@@ -320,6 +371,12 @@ export function createUserMenu(a: Account): HTMLElement {
     lastPointer = p; pointer = p;
   };
   const onUp = (e: PointerEvent) => {
+    if (tapDown) {
+      tapDown = false;
+      const p = pos(e);
+      if (Math.hypot(p.x - downPos.x, p.y - downPos.y) < TAP_THRESHOLD) { flipped = !flipped; flipTarget = flipped ? 180 : 0; wake(); }
+      return;
+    }
     if (!dragging) return;
     dragging = false;
     const p = pos(e);
@@ -346,25 +403,30 @@ export function createUserMenu(a: Account): HTMLElement {
     if (!stage.isConnected) (wrap.closest('.app') ?? wrap.getRootNode() as ShadowRoot).append(stage);
     resize();
     points.length = 0;
+    const fixed = !idDrag || reducedMotion();
     // 按原长沿静止方向摆直，再给一点横向初速度，挂出来时轻轻晃一下
     {
       const dx = restX - anchor.x, dy = Math.sqrt(Math.max(0, REST_LENGTH ** 2 - dx * dx));
       for (let i = 0; i < NUM_POINTS; i++) {
         const k = i / (NUM_POINTS - 1), x = anchor.x + dx * k, y = anchor.y + dy * k;
-        points.push({ x, y, oldx: x + k * 1.5, oldy: y, pinned: i === 0 });
+        points.push({ x, y, oldx: fixed ? x : x + k * 1.5, oldy: y, pinned: i === 0 });
       }
     }
     flipped = false; flipTarget = 0; flipCurrent = 0;
     stage.hidden = false;
     stage.classList.remove('idcl-leaving');
+    stage.classList.toggle('idcl-fixed', fixed);
+    if (fixed) hint.remove();
+    measure();
     addEventListener('pointermove', onMove);
     addEventListener('pointerup', onUp);
     addEventListener('resize', resize); addEventListener('resize', wake);
     addEventListener('blur', onOut);
     cancelAnimationFrame(raf); loop();
     wrap.setAttribute('data-open', '');
-    // 未读和新动态每次打开都刷新（会变）
-    unreadTotal().then((v) => mark(unreadN, v)).catch(() => {});
+    // 未读和新动态每次打开都刷新（会变）；关闭消息提醒时不请求未读
+    if (msgRemind) unreadTotal().then((v) => mark(unreadN, v)).catch(() => {});
+    else { unreadN.textContent = '—'; unreadN.classList.remove('hot'); }
     dynamicUpdates().then((v) => mark(dynN, v)).catch(() => {});
     if (!loaded) {
       loaded = true;
@@ -395,13 +457,12 @@ export function createUserMenu(a: Account): HTMLElement {
   const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && isOpen) { dragging = false; close(); trigger.focus(); } };
   wrap.addEventListener('keydown', esc);
   card.addEventListener('keydown', esc);
-  return wrap;
 }
 
 function svgCheck(): SVGElement {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   s.setAttribute('viewBox', '0 0 24 24');
-  s.innerHTML = '<path d="M4 12l5 5L20 6" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>';
+  setMarkup(s, '<path d="M4 12l5 5L20 6" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>');
   return s;
 }
 

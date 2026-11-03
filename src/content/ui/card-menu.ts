@@ -6,7 +6,7 @@ import { toast } from './controls';
 import { ICONS } from './dom';
 
 /** 视频卡片右键菜单：新标签打开、稍后再看、复制链接 / BV 号、UP 主空间、屏蔽 UP */
-export function bindCardMenu(container: HTMLElement, cm: ContextMenu, toastRoot: () => HTMLElement, opts: { onBlock?: (v: Video) => void; onLater?: () => void } = {}): void {
+export function bindCardMenu(container: HTMLElement, cm: ContextMenu, toastRoot: () => HTMLElement, opts: { onBlock?: (v: Video) => void; onLater?: () => void; onDislike?: (v: Video, card: HTMLElement) => void } = {}): void {
   container.addEventListener('contextmenu', (e) => {
     if (e.shiftKey) return;
     const card = (e.target as Element).closest('.card');
@@ -23,7 +23,10 @@ export function bindCardMenu(container: HTMLElement, cm: ContextMenu, toastRoot:
       { label: '复制 BV 号', icon: ICONS.copy, run: () => copy(v.bvid, `${v.bvid} 已复制`) },
       { label: `打开「${v.author}」的空间`, icon: ICONS.user, run: () => window.open(`https://space.bilibili.com/${v.mid}`, '_blank', 'noopener') },
     ];
-    if (opts.onBlock) items.push('separator', { label: `不看「${v.author}」`, icon: ICONS.block, danger: true, run: () => opts.onBlock!(v) });
+    const neg: MenuEntry[] = [];
+    if (opts.onDislike && v.trackId) neg.push({ label: '不感兴趣', icon: ICONS.close, run: () => opts.onDislike!(v, card as HTMLElement) });
+    if (opts.onBlock) neg.push({ label: `不看「${v.author}」`, icon: ICONS.block, danger: true, run: () => opts.onBlock!(v) });
+    if (neg.length) items.push('separator', ...neg);
     cm.show(e.clientX, e.clientY, items);
   });
 }

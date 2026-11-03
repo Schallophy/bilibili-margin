@@ -11,6 +11,22 @@ import type { SkinKind } from './ui/watch';
 import watchCss from './watch.css?inline';
 import pagesCss from './pages.css?inline';
 import detailCss from './detail.css?inline';
+import liveCss from './live.css?inline';
+import globalCss from './global.css?inline';
+import { setUserReducedMotion } from './motion';
+import { startNativeFilter } from './native-filter';
+
+// Firefox：内容脚本自带的 fetch 以扩展身份发请求，B 站接口收不到登录 cookie（一直显示未登录）。
+// Firefox 另给了页面身份的 content.fetch，B 站自家域名的请求改走它；其他域名（天气等）照旧。Chrome 没有 content，不受影响。
+const ffPage = (globalThis as { content?: { fetch?: typeof fetch } }).content;
+if (typeof ffPage?.fetch === 'function') {
+  const extFetch = globalThis.fetch.bind(globalThis);
+  const pageFetch = ffPage.fetch.bind(ffPage);
+  globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    return /^https:\/\/([\w-]+\.)*(bilibili\.com|hdslb\.com|biliapi\.net)\//.test(url) ? pageFetch(input, init) : extFetch(input, init);
+  };
+}
 
 type Pages = {
   home: typeof import('./pages/home');
@@ -25,6 +41,22 @@ type Pages = {
 const load = <K extends keyof Pages>(name: K): Promise<Pages[K]> => import(/* @vite-ignore */ chrome.runtime.getURL(`pages/${name}.js`));
 
 const HIDE_CSS = 'html{background:#111!important;overflow:hidden!important}body{display:none!important}@media (prefers-color-scheme: light){html{background:#f5f4f1!important}}';
+
+/** 文档级全局 CSS：过滤标记、广告规则、减少动画；和换皮 CSS 分开注入 */
+const GLOBAL_CSS_ID = 'margin-global-css';
+function mountGlobalCss(): void {
+  if (document.getElementById(GLOBAL_CSS_ID)) return;
+  const st = document.createElement('style');
+  st.id = GLOBAL_CSS_ID;
+  st.textContent = globalCss;
+  document.documentElement.append(st);
+}
+
+/** 设置开关映射到文档级 class；HTML 只负责命中 CSS，具体逻辑在各自组件里 */
+function applyGlobalUi(s: Settings): void {
+  document.documentElement.classList.toggle('margin-ads-hide', s.enabled && s.hideAds);
+  setUserReducedMotion(s.enabled && s.reduceMotion);
+}
 /** document_start 时先把原页面藏起来，避免闪一下原版 */
 function hideOriginal(): HTMLStyleElement {
   const hide = document.createElement('style');
@@ -36,8 +68,10 @@ function hideOriginal(): HTMLStyleElement {
 
 const isHome = () => location.hostname === 'www.bilibili.com' && /^\/(?:[a-z]{2}(?:-[A-Za-z]{2,4})?\/?)?(?:index\.html)?$/.test(location.pathname);
 
-const isWatch = () => location.hostname === 'www.bilibili.com' && /^\/(?:[a-z]{2}(?:-[A-Za-z]{2,4})?\/)?video\/(?:BV|av)/i.test(location.pathname);
+const isWatch = () => location.hostname === 'www.bilibili.com' && /^\/(?:[a-z]{2}(?:-[A-Za-z]{2,4})?\/)?(?:video\/(?:BV|av)|list\/(?:ml\d|watchlater|\d))/i.test(location.pathname);
 const isSearch = () => location.hostname === 'search.bilibili.com';
+/** 直播间（v0.47.2）：live.bilibili.com/房间号，只在顶层页面；活动页里嵌的 blanc 房间不管 */
+const isLive = () => location.hostname === 'live.bilibili.com' && /^\/\d+\/?$/.test(location.pathname) && window.top === window;
 /** 其他接管的页面：除首页、播放页外的 B 站页面（空间、番剧、动态、历史、专栏、稍后再看…） */
 const SKIP = /^\/(?:[a-z]{2}(?:-[A-Za-z]{2,4})?\/)?(?:blackboard|correspond|v\/topic|festival|bnj|ssr)/;
 const isPage = () => /^(www|space|t)\.bilibili\.com$/.test(location.hostname) && !SKIP.test(location.pathname) && window.top === window;
@@ -74,7 +108,7 @@ function skinStyle(kind: SkinKind, theme: string): HTMLStyleElement {
   if (!st) {
     st = document.createElement('style');
     st.id = 'margin-watch-css';
-    st.textContent = watchCss + '\n' + pagesCss + '\n' + detailCss;
+    st.textContent = watchCss + '\n' + pagesCss + '\n' + detailCss + '\n' + liveCss;
     de.append(st);
   }
   return st;
@@ -88,13 +122,15 @@ function unskin(kind: SkinKind): void {
 }
 
 async function startWatch(kind: SkinKind = 'watch'): Promise<void> {
-  if (sessionStorage.getItem('margin:off') || offByUrl()) { sessionStorage.removeItem('margin:off'); return; }
+  if (sessionStorage.getItem('margin:off') || offByUrl()) { backPill(); return; }
   // 设置和页面模块并行读取
   const mod = load('watch');
   mod.catch(() => {});
   const mirror = skinMirror();
   if (mirror && mirror !== '0') skinStyle(kind, mirror);
   const settings = await loadSettings();
+  // 屏蔽词在原生页面独立生效；即使关闭了「其他页面重设计」，只开过滤也能用
+  if (settings.enabled && kind !== 'live') startNativeFilter(kind, settings);
   const on = settings.enabled && settings.watch;
   setSkinMirror(on ? settings.theme : '0');
   if (!on) { unskin(kind); return; }
@@ -104,7 +140,7 @@ async function startWatch(kind: SkinKind = 'watch'): Promise<void> {
   // 详情页：右侧作者栏 / 目录 / 操作区按需加载；出错只影响侧栏，换皮照常
   const dk = kind === 'page' ? detailKind() : null;
   if (dk) {
-    load('detail').then((m) => m.mountDetail(dk)).catch((e) => {
+    load('detail').then((m) => m.mountDetail(dk, skin.filter)).catch((e) => {
       console.error('[MARGIN] 详情页侧栏加载失败：', e);
       document.getElementById('margin-aside')?.remove();
       document.documentElement.classList.add('margin-detail-narrow');
@@ -116,6 +152,32 @@ async function startWatch(kind: SkinKind = 'watch'): Promise<void> {
   });
 }
 
+/**
+ * 点了「原版」之后这一页是 B 站原版，左下角留一个小按钮可以切回映间（v0.47.2，GitHub #6：回去之后没按钮切回来）。
+ * 只在用户手动切回原版时出现；?margin=off 的链接不显示。
+ */
+function backPill(): void {
+  const manual = sessionStorage.getItem('margin:off') === '1';
+  sessionStorage.removeItem('margin:off');
+  if (!manual || window.top !== window) return;
+  const put = () => {
+    if (document.getElementById('margin-back')) return;
+    const b = document.createElement('button');
+    b.id = 'margin-back';
+    b.type = 'button';
+    b.textContent = '回到映间';
+    b.title = '刚才切回了 B 站原版，点这里换回映间';
+    b.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:2147483000;height:32px;padding:0 14px;border:0;border-radius:16px;'
+      + 'background:#17181a;color:#fff;font:500 13px/32px system-ui,"PingFang SC","Microsoft YaHei",sans-serif;cursor:pointer;'
+      + 'box-shadow:0 0 0 1px rgb(255 255 255/.12),0 4px 12px rgb(0 0 0/.18);opacity:.88;transition:opacity .15s';
+    b.onmouseenter = () => { b.style.opacity = '1'; };
+    b.onmouseleave = () => { b.style.opacity = '.88'; };
+    b.onclick = () => location.reload();
+    document.body.append(b);
+  };
+  if (document.body) put(); else addEventListener('DOMContentLoaded', put, { once: true });
+}
+
 /** 键盘导航模式：按 Tab 后在映间的 Shadow DOM 宿主上标记 data-kbd，指针一按就撤销；样式里用 :host([data-kbd]) 给输入框外层画聚焦环 */
 function trackKeyboard(): void {
   const hosts = () => ['margin-root', 'margin-watch-top'].map((id) => document.getElementById(id)).filter((e): e is HTMLElement => !!e);
@@ -124,6 +186,9 @@ function trackKeyboard(): void {
 }
 
 async function start(): Promise<void> {
+  mountGlobalCss();
+  // hideAds 默认开启：先在 document_start 挂上，避免等异步设置时闪一下广告
+  if (!offByUrl() && !sessionStorage.getItem('margin:off')) document.documentElement.classList.add('margin-ads-hide');
   injectFonts();
   trackKeyboard();
   startTracking(); // 足迹在所有 B 站页面记录，不只首页
@@ -135,11 +200,10 @@ async function start(): Promise<void> {
   if (isHistory()) return takeover(load('history'), (m, st) => new m.HistoryApp(st));
   if (isFeed()) return takeover(load('feed'), (m, st) => new m.FeedApp(st));
   if (isSearch()) return startWatch('search');
+  if (isLive()) return startWatch('live');
   if (!isHome() && isPage()) return startWatch('page');
-  if (!isHome() || sessionStorage.getItem('margin:off') || offByUrl()) {
-    sessionStorage.removeItem('margin:off');
-    return;
-  }
+  if (!isHome()) return;
+  if (sessionStorage.getItem('margin:off') || offByUrl()) { backPill(); return; }
   // Hide the original page as early as possible to avoid a flash.
   const hide = hideOriginal();
   const unmute = muteNative();
@@ -166,7 +230,7 @@ async function start(): Promise<void> {
 /** 接管式页面：先藏原版，再挂映间页面；设置里关掉「其他页面重设计」就保留原版 */
 async function takeover<M>(mod: Promise<M>, make: (m: M, s: Settings) => { shell: { host: HTMLElement }; update(s: Settings): void }, mute = true): Promise<void> {
   mod.catch(() => {});
-  if (sessionStorage.getItem('margin:off') || offByUrl()) { sessionStorage.removeItem('margin:off'); return; }
+  if (sessionStorage.getItem('margin:off') || offByUrl()) { backPill(); return; }
   const hide = hideOriginal();
   const unmute = mute ? muteNative() : () => {};
   const settings = await loadSettings();
@@ -207,8 +271,11 @@ async function guarded<T>(name: string, mount: () => Promise<T>, restore: () => 
 function restoreNative(hide: HTMLStyleElement, muted: boolean): void {
   hide.remove();
   document.documentElement.style.removeProperty('background');
+  // 挂载失败时连全局过滤/减少动画状态一起撤掉，真正回到原版
+  document.documentElement.classList.remove('margin-ads-hide', 'margin-reduce');
+  document.getElementById('margin-global-css')?.remove();
   if (!muted) return;
-  sessionStorage.setItem('margin:off', '1');
+  sessionStorage.setItem('margin:off', 'err');
   location.reload();
 }
 
@@ -218,5 +285,60 @@ function disabledAfterMute(): void {
   setGuard(false);
   location.reload();
 }
+
+/**
+ * 字体（v0.46 标题字体；v0.47 加自定义正文字体、数字等宽开关）：在 html 上设继承变量，
+ * 首页 / 接管页（Shadow DOM）和换皮页的 --sans / --mono / --serif 都先读它们。
+ */
+const SANS = '"Geist", "Margin Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
+function applyFont(s: Settings): void {
+  const de = document.documentElement;
+  const on = s.enabled;
+  const custom = on && s.bodyFont ? `"${s.bodyFont}", ` : '';
+  const sans = custom + SANS;
+  const set = (k: string, v: string | null) => { if (v) de.style.setProperty(k, v); else de.style.removeProperty(k); };
+  set('--margin-sans', custom ? sans : null);
+  set('--margin-title', on && s.titleFont === 'sans' ? sans : null);
+  set('--margin-mono', on && !s.monoNum ? sans : null);
+  // 视频 CDN 节点：页面主环境的 cdn.js 同步读 localStorage（v0.47.2）
+  try { if (on && s.cdn) localStorage.setItem('margin:cdn', s.cdn); else localStorage.removeItem('margin:cdn'); } catch { /* 隐私模式 */ }
+  set('--margin-zoom', on && s.zoom !== 100 ? String(s.zoom / 100) : null);
+}
+if (!offByUrl() && !sessionStorage.getItem('margin:off')) {
+  loadSettings().then((s) => { applyFont(s); applyGlobalUi(s); }).catch(() => {});
+  onSettingsChange((n) => { applyFont(n); applyGlobalUi(n); });
+}
+
+/**
+ * 扩展冲突提示（v0.47，评论区：Edge 上只有搜索页生效）：BewlyBewly 之类的整站重做扩展也在 document_start 接管页面，
+ * 两个一起开会互相盖掉 / 互相拦脚本。检测到就在页面顶端提示一次，可以关掉不再提示。
+ */
+const CONFLICTS: [string, () => boolean][] = [
+  ['BewlyBewly', () => !!document.getElementById('bewly') || document.documentElement.classList.contains('bewly-design')],
+];
+function checkConflicts(): void {
+  if (window.top !== window) return;
+  const KEY = 'margin:conflict-ok';
+  const run = () => {
+    const hit = CONFLICTS.filter(([, f]) => { try { return f(); } catch { return false; } }).map(([n]) => n);
+    if (!hit.length) return;
+    try { if (localStorage.getItem(KEY) === hit.join(',')) return; } catch { /* ignore */ }
+    console.warn('[MARGIN] 检测到同类扩展：', hit.join('、'));
+    const bar = document.createElement('div');
+    bar.setAttribute('role', 'alert');
+    bar.style.cssText = 'position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:2147483647;display:flex;gap:12px;align-items:center;max-width:min(640px,calc(100vw - 32px));padding:12px 16px;border-radius:14px;background:#17181a;color:#fff;font:13px/1.5 system-ui,"Microsoft YaHei",sans-serif;box-shadow:0 8px 32px rgb(0 0 0/.28)';
+    const text = document.createElement('span');
+    text.textContent = `检测到 ${hit.join('、')} 也在改 B 站页面，和映间同时开启会互相覆盖，部分页面会显示成原版。请在浏览器扩展管理里停用其中一个。`;
+    const close = document.createElement('button');
+    close.type = 'button'; close.textContent = '知道了';
+    close.style.cssText = 'flex:none;border:0;border-radius:99em;padding:6px 12px;background:#fff;color:#17181a;font:inherit;cursor:pointer';
+    close.onclick = () => { try { localStorage.setItem(KEY, hit.join(',')); } catch { /* ignore */ } bar.remove(); };
+    bar.append(text, close);
+    document.documentElement.append(bar);
+  };
+  const later = () => setTimeout(run, 2500);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', later, { once: true }); else later();
+}
+if (!offByUrl()) checkConflicts();
 
 start().catch((e) => console.error("[MARGIN]", e));

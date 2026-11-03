@@ -1,3 +1,4 @@
+import { getWbi } from './http';
 /** 搜索联想、热搜、稍后再看——都是 B 站网页端自己在用的接口（只允许 www.bilibili.com 跨域） */
 export interface Suggest { term: string; html: string }
 export interface Hot { keyword: string; name: string }
@@ -9,11 +10,21 @@ export async function suggest(term: string, signal?: AbortSignal): Promise<Sugge
   return tags.slice(0, 8).map((t) => ({ term: t.value, html: t.name }));
 }
 
+/* 热搜（v0.40.0）：改用 B 站顶栏同款的 wbi 签名接口 /x/web-interface/wbi/search/square（带 platform=web，登录后与原生顶栏一致），
+ * 失败再退回旧的未签名接口；缓存 5 分钟，长时间开着的首页再次打开搜索时会刷新，不再一直显示打开页面时的那一批 */
 let hotCache: Promise<Hot[]> | null = null;
+let hotAt = 0;
+const HOT_TTL = 5 * 60_000;
+type TrendResp = { trending?: { list?: { keyword: string; show_name: string }[] } };
+const toHot = (b: TrendResp | undefined) => (b?.trending?.list ?? []).map((x) => ({ keyword: x.keyword, name: x.show_name || x.keyword }));
 export function hotSearch(): Promise<Hot[]> {
-  hotCache ??= fetch('https://api.bilibili.com/x/web-interface/search/square?limit=10', { credentials: 'include' })
-    .then((r) => r.json())
-    .then((b) => ((b?.data?.trending?.list ?? []) as { keyword: string; show_name: string }[]).map((x) => ({ keyword: x.keyword, name: x.show_name || x.keyword })))
+  if (hotCache && Date.now() - hotAt < HOT_TTL) return hotCache;
+  hotAt = Date.now();
+  hotCache = getWbi<TrendResp>('/x/web-interface/wbi/search/square', { limit: 10, platform: 'web' })
+    .then(toHot)
+    .then((l) => (l.length ? l : Promise.reject(new Error('empty'))))
+    .catch(() => fetch('https://api.bilibili.com/x/web-interface/search/square?limit=10', { credentials: 'include' })
+      .then((r) => r.json()).then((b) => toHot(b?.data)))
     .catch(() => { hotCache = null; return []; });
   return hotCache;
 }

@@ -1,4 +1,5 @@
-/**
+
+import { setMarkup } from './dom';/**
  * 昼夜切换：用户提供的 Uiverse「theme-switch」原生移植（太阳滑到右侧被月亮盖住、云沉下去、星星落下来）。
  * 结构、尺寸比例、过渡曲线照搬原代码；只把配色换成站点的色调（天空跟随 --accent 调色板，夜色贴近站点暗底）。
  * 原组件用隐藏 checkbox，这里用 button[role=switch] + data-state，交给外部控制主题。
@@ -20,12 +21,12 @@ export function createSunMoon(onToggle: () => void, duration = 500): SunMoon {
   el.type = 'button';
   el.className = 'ts';
   el.setAttribute('role', 'switch');
-  el.innerHTML =
+  setMarkup(el,
     '<span class="ts-c" aria-hidden="true">' +
       '<span class="ts-clouds"></span>' +
       '<span class="ts-stars"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 55" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="' + STARS_D + '"/></svg></span>' +
       '<span class="ts-circle"><span class="ts-sm"><span class="ts-moon"><span class="ts-spot"></span><span class="ts-spot"></span><span class="ts-spot"></span></span></span></span>' +
-    '</span>';
+    '</span>');
   let theme: Theme | null = null;
   el.addEventListener('click', onToggle);
   return {
@@ -35,11 +36,13 @@ export function createSunMoon(onToggle: () => void, duration = 500): SunMoon {
       el.title = label; el.setAttribute('aria-label', label);
       el.setAttribute('aria-checked', String(t === 'dark'));
       if (t === theme) return;
-      const instant = !theme || !animate;
+      // 第一次设置时元素还没有旧样式，本来就不会过渡，不用强制刷新布局（播放页加载时这一下约 160ms，v0.44）
+      const first = !theme, instant = !first && !animate;
       theme = t;
-      if (instant) el.classList.add('ts-still');
+      if (first || instant) el.classList.add('ts-still');
       el.dataset.state = t;
-      if (instant) { void el.offsetWidth; requestAnimationFrame(() => el.classList.remove('ts-still')); }
+      if (instant) void getComputedStyle(el).opacity;
+      if (first || instant) requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('ts-still')));
     },
   };
 }

@@ -1,4 +1,4 @@
-import { getWbi } from './http';
+import { getJSON, getWbi } from './http';
 
 const cache = new Map<string, Promise<string | null>>();
 
@@ -11,4 +11,11 @@ export function previewUrl(bvid: string, cid: number): Promise<string | null> {
     }).then((d) => d.durl?.[0]?.url?.replace(/^http:/, 'https:') ?? null).catch(() => null));
   }
   return cache.get(key)!;
+}
+
+const cids = new Map<string, Promise<number>>();
+/** 空间页、动态页的视频没有 cid（#2），悬停预览前按 BV 号补一个（取第 1P） */
+export function cidOf(bvid: string): Promise<number> {
+  if (!cids.has(bvid)) cids.set(bvid, getJSON<{ cid: number }[]>('/x/player/pagelist', { bvid }).then((l) => l?.[0]?.cid ?? 0).catch(() => 0));
+  return cids.get(bvid)!;
 }

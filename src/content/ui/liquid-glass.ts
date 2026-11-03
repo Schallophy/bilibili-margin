@@ -1,5 +1,6 @@
 import barMap from '../assets/glass-bar.webp?inline';
 import thumbMap from '../assets/glass-thumb.webp?inline';
+import { setMarkup } from './dom';
 
 /**
  * 液态玻璃：21st「Apple Liquid glass switcher」（dennysdionigi / Den Dionigi）的原生移植。
@@ -55,6 +56,18 @@ function makeMap(w: number, h: number, radius: number, bezel: number): HTMLCanva
   return c;
 }
 
+/** 同尺寸同圆角的位移图全站共用一张（顶栏几个按钮尺寸相同），只算一次（v0.44） */
+const maps = new Map<string, Promise<string | null>>();
+function mapUrl(w: number, h: number, radius: number, bezel: number): Promise<string | null> {
+  const k = `${w}x${h}r${radius}b${bezel}`;
+  let p = maps.get(k);
+  if (!p) {
+    p = new Promise((res) => makeMap(w, h, radius, bezel).toBlob((b) => res(b ? URL.createObjectURL(b) : null)));
+    maps.set(k, p);
+  }
+  return p;
+}
+
 export interface GlassOpts { blur?: number; strength?: number; sat?: string }
 
 /** 给元素挂一块会按尺寸重算的玻璃滤镜；filters 是放滤镜的 <svg>（与元素同一个 shadow root） */
@@ -71,8 +84,10 @@ export function attachGlass(el: HTMLElement, filters: SVGSVGElement, o: GlassOpt
   filters.append(f);
 
   let url = '', lastKey = '', timer = 0, building = false;
+  // 尺寸来自 ResizeObserver 的 borderBoxSize，不读 offsetWidth（避免强制布局）
+  let W = 0, H = 0;
   const build = () => {
-    const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
+    const w = W, h = H;
     if (w < 4 || h < 4) return;
     const key = `${w}x${h}`;
     if (key === lastKey) return;
@@ -80,18 +95,19 @@ export function attachGlass(el: HTMLElement, filters: SVGSVGElement, o: GlassOpt
     building = true;
     const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || h / 2;
     const bezel = Math.min(h / 2, w / 2, 22);
-    makeMap(w, h, radius, bezel).toBlob((b) => {
+    void mapUrl(w, h, radius, bezel).then((u) => {
       if (key !== lastKey) return;
       building = false;
-      if (!b) return;
-      if (url) URL.revokeObjectURL(url);
-      url = URL.createObjectURL(b);
+      if (!u) return;
+      url = u;
       img.setAttribute('href', url);
       el.style.backdropFilter = `blur(${o.blur ?? 6}px) url(#${id}) saturate(${o.sat ?? '150%'})`;
     });
   };
-  const resize = () => {
-    const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
+  const resize = (en?: ResizeObserverEntry) => {
+    const b = en?.borderBoxSize?.[0];
+    if (b) { W = Math.round(b.inlineSize); H = Math.round(b.blockSize); }
+    const w = W, h = H;
     if (w < 4 || h < 4) return;
     // Keep the existing map stretched with the control during its width animation.
     // Generate exact optics once the dimensions settle instead of on every frame.
@@ -101,8 +117,7 @@ export function attachGlass(el: HTMLElement, filters: SVGSVGElement, o: GlassOpt
     if (!url && !building) build();
     else if (`${w}x${h}` !== lastKey) timer = window.setTimeout(build, 80);
   };
-  new ResizeObserver(resize).observe(el);
-  requestAnimationFrame(resize);
+  new ResizeObserver(([en]) => resize(en)).observe(el);
 }
 
 /** 原版两张位移图（兜底 / 首帧），CSS 里可用 url(#lg-bar) / url(#lg-thumb) */
@@ -116,7 +131,7 @@ export function glassFilters(): SVGSVGElement {
     f.id = id;
     f.setAttribute('primitiveUnits', 'objectBoundingBox');
     f.setAttribute('color-interpolation-filters', 'sRGB');
-    f.innerHTML = `<feImage result="map" width="100%" height="100%" x="0" y="0" preserveAspectRatio="none" href="${map}"/><feGaussianBlur in="SourceGraphic" stdDeviation="${sd}" result="blur"/><feDisplacementMap in="blur" in2="map" scale="0.5" xChannelSelector="R" yChannelSelector="G"/>`;
+    setMarkup(f, `<feImage result="map" width="100%" height="100%" x="0" y="0" preserveAspectRatio="none" href="${map}"/><feGaussianBlur in="SourceGraphic" stdDeviation="${sd}" result="blur"/><feDisplacementMap in="blur" in2="map" scale="0.5" xChannelSelector="R" yChannelSelector="G"/>`);
     svg.append(f);
   }
   return svg;

@@ -1,6 +1,7 @@
 import { every } from '../sched';
 import { forgetSearch, hotSearch, rememberSearch, searchHistory, searchUrl, suggest, type Hot } from '../api/search';
-import { h, icon, ICONS } from './dom';
+import { h, highlight, icon, ICONS } from './dom';
+import { onMotionChange, reducedMotion } from '../motion';
 
 /**
  * 首页主搜索 v0.23.0
@@ -10,7 +11,6 @@ import { h, icon, ICONS } from './dom';
  */
 export interface HeroSearch { el: HTMLElement; scrim: HTMLElement; focus: () => void }
 
-const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const strip = (s: string) => s.replace(/<[^>]+>/g, '');
 
 export function createHeroSearch(app: () => HTMLElement, _onPalette?: () => void): HeroSearch {
@@ -45,24 +45,33 @@ export function createHeroSearch(app: () => HTMLElement, _onPalette?: () => void
     const k = hot[hi]?.name || current();
     if (!k) return;
     const prev = phWords.querySelector('.hs-ph-w:not(.out)');
-    const next = phWord(k, first || reduce() ? '' : 'in');
+    const next = phWord(k, first || reducedMotion() ? '' : 'in');
     phWords.append(next);
-    if (prev) { prev.classList.add('out'); setTimeout(() => prev.remove(), 420); }
+    if (prev) { prev.classList.add('out'); if (reducedMotion()) prev.remove(); else setTimeout(() => prev.remove(), 420); }
   }
+  const stopRot = () => { rot?.(); rot = null; };
+  const startRot = () => {
+    stopRot();
+    if (reducedMotion() || !hot.length) return;
+    rot = every(3200, () => {
+      if (input.value) return;
+      hi = (hi + 1) % hot.length;
+      showHot();
+    });
+  };
+  onMotionChange(() => {
+    if (reducedMotion()) stopRot();
+    else if (!rot) startRot();
+  });
   hotSearch().then((x) => {
     hot = x.slice(0, 10);
     if (!hot.length) return;
     ph.firstElementChild!.textContent = '大家都在搜';
     ph.classList.add('has-hot');
     showHot(true);
-    rot = every(3200, () => {
-      if (input.value) return;
-      hi = (hi + 1) % hot.length;
-      showHot();
-    });
+    startRot();
     if (isOpen()) render();
   }).catch(() => {});
-  void rot;
 
   // ── 联想面板 ──
   let opts: HTMLElement[] = [];
@@ -127,7 +136,7 @@ export function createHeroSearch(app: () => HTMLElement, _onPalette?: () => void
       for (const s of sugg) {
         if (s.term === q) continue;
         const t = h('span', { class: 'hs-t' });
-        t.innerHTML = s.html.replace(/<em class="suggest_high_light">/g, '<mark>').replace(/<\/em>/g, '</mark>');
+        highlight(t, s.html);
         if (!t.textContent) t.textContent = strip(s.term);
         rows.append(stag(opt('hs-row-i', () => go(s.term), icon(ICONS.search), t, icon(ICONS.arrow))));
       }
@@ -206,7 +215,7 @@ export function createHeroSearch(app: () => HTMLElement, _onPalette?: () => void
   // ── 回车后文字化成粒子散去（21st Placeholders And Vanish Input 的原生 canvas 版） ──
   function vanish() {
     const text = input.value;
-    if (reduce() || !text) { input.value = ''; sync(); close(); return; }
+    if (reducedMotion() || !text) { input.value = ''; sync(); close(); return; }
     const field = canvas.parentElement!;
     const W = field.clientWidth, H = field.clientHeight, dpr = 2;
     canvas.width = W * dpr; canvas.height = H * dpr;

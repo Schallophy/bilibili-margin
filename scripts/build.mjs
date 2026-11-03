@@ -24,7 +24,7 @@ for (const { name, entry } of entries) {
       outDir: 'dist',
       emptyOutDir: false,
       target: 'chrome110',
-      minify: true,
+      minify: !process.env.NOMIN,
       lib: { entry, name: `margin_${name}`, formats: ['iife'], fileName: () => `${name}.js` },
     },
   });
@@ -39,13 +39,13 @@ await build({
     outDir: 'dist',
     emptyOutDir: false,
     target: 'chrome110',
-    minify: true,
+    minify: !process.env.NOMIN,
     lib: {
       entry: Object.fromEntries(PAGES.map((p) => [p, `src/content/pages/${p}.ts`])),
       formats: ['es'],
       fileName: (_f, name) => `pages/${name}.js`,
     },
-    rolldownOptions: { output: { minify: true, chunkFileNames: 'pages/chunk-[hash].js' } },
+    rolldownOptions: { output: { minify: !process.env.NOMIN, chunkFileNames: 'pages/chunk-[hash].js' } },
   },
 });
 
@@ -59,9 +59,9 @@ await build({
     outDir: 'dist',
     emptyOutDir: false,
     target: 'chrome113',
-    minify: true,
+    minify: !process.env.NOMIN,
     lib: { entry: 'src/content/bg/flux/index.ts', formats: ['es'], fileName: () => 'flux.js' },
-    rolldownOptions: { output: { minify: true } },
+    rolldownOptions: { output: { minify: !process.env.NOMIN } },
   },
 });
 

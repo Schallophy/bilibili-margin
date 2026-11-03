@@ -40,6 +40,13 @@ export function savedLoc(): Loc | null {
 export function setLoc(loc: Loc): void {
   localStorage.setItem(LOC_KEY, JSON.stringify({ ...loc, manual: true }));
   localStorage.removeItem(CACHE_KEY);
+  dispatchEvent(new Event('margin:wx-loc'));
+}
+/** 回到按 IP 自动定位（#3：移动宽带的 IP 定位常常不准，所以设置里可以手动选城市，也能退回自动） */
+export function clearLoc(): void {
+  localStorage.removeItem(LOC_KEY);
+  localStorage.removeItem(CACHE_KEY);
+  dispatchEvent(new Event('margin:wx-loc'));
 }
 
 async function ipLoc(): Promise<Loc> {
@@ -54,6 +61,13 @@ export async function geocode(q: string): Promise<Loc | null> {
   const r = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=zh&name=${encodeURIComponent(q)}`)).json();
   const g = r?.results?.[0];
   return g ? { name: g.name, lat: g.latitude, lon: g.longitude } : null;
+}
+
+export interface Place extends Loc { region: string }
+/** 城市候选：同名城市很多（如「朝阳」），带上省份 / 国家给人挑 */
+export async function geocodeList(q: string, n = 6): Promise<Place[]> {
+  const r = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=${n}&language=zh&name=${encodeURIComponent(q)}`)).json();
+  return ((r?.results ?? []) as any[]).map((g) => ({ name: g.name, lat: g.latitude, lon: g.longitude, region: [g.admin1, g.country].filter((x: string) => x && x !== g.name).join(' · ') }));
 }
 
 const WEEK = '日一二三四五六';

@@ -1,12 +1,13 @@
 {
   "name": "margin",
-  "version": "0.34.1",
+  "version": "0.48.0",
   "private": true,
   "description": "映间 MARGIN — 一个重新设计的 B 站首页浏览器扩展",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",
     "pack": "npm run build && cd dist && rm -f ../margin.zip && zip -qrX ../margin.zip .",
+    "pack:firefox": "npm run pack && node scripts/firefox.mjs",
     "test:smoke": "node tests/smoke.mjs",
     "fonts": "python3 scripts/slice-fonts.py"
   },

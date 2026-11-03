@@ -1,99 +1,129 @@
-**中文** | [English](README.en.md)
+<div align="center">
 
-# 映间 MARGIN
+<img src="store/edge/logo-300.png" width="104" height="104" alt="映间 MARGIN 图标" />
 
-一个从零编写的 B 站首页浏览器扩展（Chrome / Edge，Manifest V3）。安静的排版、干净的推荐流。
+<h1>映间 MARGIN</h1>
 
-[更新日志](CHANGELOG.md) · [下载最新版](https://github.com/jiuyang5354/bilibili-margin/releases/latest)
+<p><strong>给 B 站换一个更清晰的界面。</strong></p>
+<p>编辑式排版、液态玻璃控件、动态背景，保留熟悉的原生播放体验。</p>
+<p>A quieter interface for Bilibili, with clean layouts, liquid glass controls and animated backgrounds.</p>
 
-> 非 B 站官方项目，与哔哩哔哩无关联。所有数据直接来自你当前登录的 B 站账号，不经过任何第三方服务器。
+<p>
+  <a href="https://github.com/jiuyang5354/bilibili-margin/releases/latest"><img src="https://img.shields.io/github/v/release/jiuyang5354/bilibili-margin?label=version&amp;color=00aeec" alt="最新版本" /></a>
+  <img src="https://img.shields.io/badge/browser-Edge%20%2F%20Chrome%20%2F%20Firefox-535b66" alt="支持 Edge、Chrome 和 Firefox" />
+  <img src="https://img.shields.io/badge/extension-Manifest%20V3-535b66" alt="Manifest V3" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-535b66" alt="MIT 许可" /></a>
+</p>
 
-## 功能（v0.5）
+<p>
+  <a href="https://github.com/jiuyang5354/bilibili-margin/releases/latest">下载扩展</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#功能">功能</a> ·
+  <a href="#常见问题">常见问题</a> ·
+  <a href="CHANGELOG.md">更新日志</a> ·
+  <a href="https://github.com/jiuyang5354/bilibili-margin/issues">反馈问题</a>
+</p>
 
-- 接管 `www.bilibili.com` 首页，原页面隐藏
-- v0.10：搜索页（`search.bilibili.com`）重新设计（大号胶囊搜索框、衬线分类标签、胶囊排序、圆角卡片、去广告），热门 / 排行 / 番剧 / 专栏 / 空间 / 动态等页面换上 MARGIN 顶栏和主题色；Shader 背景铺到播放页和这些页面，跟随首页设置
-- 播放页（`/video/BV…`）重设计：换上和首页一致的顶栏（搜索、快捷入口、日月主题、收藏夹、设置），标题衬线排版、播放器圆角卡片、互动胶囊、简介 / 评论 / UP 主卡片化、推荐列表重排、去广告；保留 B 站原生播放器、弹幕、评论和账号操作。改写 B 站主题变量，评论区也跟着换亮 / 暗色。网页全屏时自动收起顶栏。设置或弹窗里可关闭，链接后加 `?margin=off` 或点顶栏「原版」可临时看原版
-- 「推荐」：B 站网页端个性推荐流（WBI 签名接口），无限滚动、去重、换一批；「热门」：综合热门榜
-- 封面悬停半秒静音播放低清预览，底部细线显示进度
-- 推荐过滤：标题关键词（支持 `/正则/`）、屏蔽 UP 主（卡片上一键屏蔽，可撤销）、最低播放量、最短时长
-- B 站足迹：首页顶部的近一年热力图，记录每天首次打开时间和停留时长（只存本机），登录后用观看历史补全过去的天数
-- 日月主题切换：太阳和月亮沿弧线一落一升，按钮里的天空与星星渐变，整页颜色同步淡入淡出
-- 顶栏快捷入口：Expandable Tabs，平时只露图标，点击后弹性展开文字
-- 收藏夹抽屉：玻璃文件夹（弯角标签、封面从口袋露出、毛玻璃前板、指针靠近时前倾），点开浏览，无限加载
-- 配色：经典（暖白 · 衬线），亮色 / 暗色 / 跟随系统
-- 动态背景：5 款原创 WebGL 着色器（极光 / 丝绸 / 网格渐变 / 颗粒 / 冰蓝），每次打开随机或固定一款；也可上传自己的图片；强度可调。半分辨率、目标约 60fps（负载较高时降至约 30，恢复后回升），滚动和视频播放期间保持动态；标签页隐藏时暂停，尊重「减少动态效果」。v0.22.5 同时减少玻璃贴图重算和足迹年/月视图的节点重建；[实测结果与限制](docs/performance-v0.22.5.md)。
-- 顶栏搜索（按 `/` 聚焦），动态 / 消息 / 历史快捷入口，登录头像
-- 亮色 / 暗色 / 跟随系统主题，切换带过渡；设置面板与扩展弹窗即时同步
-- 页脚可「本次回到 B 站原版首页」，弹窗可整体关闭
+<p><strong>简体中文</strong> | <a href="README.en.md">English</a></p>
 
-v0.22.7 修复收藏夹展开动画失效，减少悬停定位和昼夜切换开销；[修复说明与实测范围](docs/interaction-performance-v0.22.7.md)。
+</div>
 
-## 设计参考
+> **English summary**
+>
+> MARGIN is an open-source Edge / Chrome / Firefox extension that redesigns Bilibili's homepage, search, video and reading pages. It keeps the native player, danmaku and comments, while adding themes, recommendation filters, favorites shortcuts and a local activity heatmap. Settings and activity records stay on your device; weather uses third-party location and forecast services. Read the [full English README](README.en.md).
 
-- 首页搜索栏（v0.23.0）：21st Placeholders And Vanish Input / Morphing Search / Expandable Search Bar；X 上 @MSchwaibold、@vponamariov 的搜索交互；热榜序号像素字体 Pirkkala（Otto Ojala，dafont，Public domain/OFL）
-- 播放页悬浮菜单字体（v0.23.2）：中文改无衬线 Margin Sans SC（思源黑体子集），英文副标 Alte Haas Grotesk（Yann Le Coroller，dafont，freeware，许可见 public/fonts/licenses/）
-- 头像工牌（v0.27.0）：移植自 21st「ID Card Lanyard」（用户提供代码）；v0.25.x 的推荐画廊（21st Elastic Gallery）已在 v0.27.0 移除
-- 播放页 UP 卡（v0.34.0）：参考 21st「Item With Actions」（felipemenezes098）、「Profile Hover Card」（isaiahbjork）；选集参考课程播放页的编号目录
-- 背景「汇流」（v0.33.0）：移植自 21st「Gateway Flow」（Neuform），Canvas 2D 点线汇流 + 点击冲击波
-- 详情页（v0.32.0）：单条动态、图文、专栏的两栏版式移植自 21st「Article With Author Sidebar」（olewandowski1）
-- 首页天气卡（v0.26.0）：点阵天空与小图标移植自 21st「Weather Widget」（vijayksingh）；数据来自 Open-Meteo（CC BY 4.0），定位 ipwho.is
+## 界面预览
 
-交互参考了 21st.dev 上的 Sheet、Segmented Control、Chip Group、Minimal Slider、Glow Button、Glass Button、Toggle Switch、Command Search 等组件的形态，用原生 TypeScript / CSS 重新实现。
+| 浅色首页 | 暗色首页 |
+| :---: | :---: |
+| ![浅色主题下的推荐流与足迹热力图](store/edge/screenshots/1.png) | ![暗色主题下的推荐流与动态背景](store/edge/screenshots/2.png) |
 
-阴影（Smooth Shadows 的分层合成与 0.5px 发丝环）和嵌套圆角规则（Perfect Corner Radius）也来自 movements.dev。足迹热力图的玻璃透镜算法移植自 movements.dev「Refractive Glass」（@movements/react-glass，MIT）。背景「流光」用 [vgpu](https://vgpu.sh)（vercel-labs，MIT）写 WebGPU 计算着色器：2.4 万颗粒子沿旋度噪声流场漂移，只在选中这款背景时才加载；浏览器不支持 WebGPU 时自动退回 WebGL 近似版。首页开场动画移植自 21st.dev「Glass Reveal」（引擎源自 zanwei/glass-icon-reveal，MIT），图标为 Simple Icons 的 B 站小电视。头像卡片移植自 21st.dev「User Profile Dropdown Menu」（shadcnspace）。个人空间与消息中心的版式参考了 21st.dev 的 Editorial Image Hero、Editorial service list、Activity Timeline、Notification Panel、Conversation List；历史记录页参考 Activity Timeline（olewandowski1），动态首页的作者行参考 SocialPostCard（ruixen.ui），足迹卡片的月视图参考 Glass Calendar。标题里的西文与英文眉标用 Instrument Serif（OFL）。
+<details>
+<summary>查看播放页、命令面板、收藏夹和搜索页</summary>
 
-收藏夹的玻璃文件夹按 21st.dev「Glass Folder Cards」的公开源码移植（React → 原生 TS，含液态纹理生成算法、扇形展开、··· 菜单与入场组装），并接入 B 站收藏数据：后板是收藏夹封面，口袋里是最近收藏的 4 个视频。
+| 播放页 | 命令面板 |
+| :---: | :---: |
+| ![保留 B 站原生播放器的播放界面](store/edge/screenshots/3.png) | ![搜索联想与快捷命令](store/edge/screenshots/4.png) |
 
-昼夜切换按用户提供的 Uiverse「theme-switch」移植（太阳滑入月亮、云沉星落），配色改为跟随站点调色板。
+| 收藏夹 | 搜索页 |
+| :---: | :---: |
+| ![玻璃文件夹样式的收藏夹抽屉](store/edge/screenshots/5.png) | ![重新排版的搜索结果](store/edge/screenshots/6.png) |
 
-顶栏快捷入口按 21st.dev「Expandable Tabs」的源码移植（framer-motion 弹簧展开 → 原生 CSS 过渡，点外部收起）。
+</details>
 
-命令面板按 21st.dev「Command Palette」（rafa-porto，Raycast 风格）移植：点顶栏搜索框、按 `/` 或 `Ctrl/⌘ + K` 唤出，有 B 站搜索联想、最近搜索、bilibili 热搜和 MARGIN 命令（换一批、切主题、收藏夹、网页全屏……），↑↓ 选、↵ 执行、Tab 切分类，常用命令按次数排前。
+截图展示主要界面，具体样式以当前版本为准。
 
-视频卡片右键菜单按 21st.dev「Context Menu」（ddoemonn）移植：新标签打开、稍后再看、复制链接 / BV 号、UP 主空间、不看该 UP；贴边自动翻转，支持键盘和首字母跳转，Shift + 右键是浏览器原生菜单。
+## 快速开始
 
-「稍后再看」抽屉按 21st.dev「Drawer」（ddoemonn）移植：右侧弹簧滑出、遮罩随位置变化、拖动头部甩出关闭；顶栏「稍后」、命令面板和卡片右键都能打开，可直接移出条目，显示观看进度。
+1. 从 [最新版本](https://github.com/jiuyang5354/bilibili-margin/releases/latest) 下载 [`margin.zip`](https://github.com/jiuyang5354/bilibili-margin/releases/latest/download/margin.zip)，解压到固定文件夹。
+2. 打开 `edge://extensions` 或 `chrome://extensions`，开启**开发者模式**。
+3. 点击**加载已解压的扩展程序**，选择包含 `manifest.json` 的文件夹。
+4. 打开或刷新 [B 站](https://www.bilibili.com/)。
 
-首页背景新增 6 款着色器：丝缎、烟霞、流萤、流沙、天光、弥散，移植自 21st.dev Shader Builder 系列（Silk、Smoke、Neuro Noise、Grain Gradient、God Rays、Mesh Gradient；Mesh Gradient 改编自 Paper Shaders，Apache-2.0），配色按亮暗主题重新调过；设置面板的样式色块改为真实渲染的缩略图。推荐流加载占位按「Skeleton Loader」（animbits）改成 1.5s 流光。播放页右缘的刻度尺滚动进度按「Scroll Bars」（radiumcoders）竖向版移植：滚动时出现，指示条弹簧跟随，悬停显示百分比，点刻度跳转。
+更新手动安装版时，将新版解压到原来的文件夹，在扩展管理页点击**重新加载**，再刷新 B 站。详细变化见[更新日志](CHANGELOG.md)。
 
-播放页底部的快捷菜单按 21st.dev「Floating Menu」移植（胶囊变形成面板、墨色圆从底部漫上来、逐字翻滚悬停），配色换成墨色 / 暖白，菜单字改衬线：回到顶部、看评论、网页全屏、宽屏模式、收藏夹。
+**Firefox（140 及以上）**：下载 [`margin-firefox.zip`](https://github.com/jiuyang5354/bilibili-margin/releases/latest/download/margin-firefox.zip)（直链，始终是最新版），打开 `about:debugging#/runtime/this-firefox`，点击**临时载入附加组件**，选择这个 zip。临时载入的扩展在重启 Firefox 后会被移除，上架 Firefox 附加组件商店后可以正常长期安装。
 
-顶栏的液态玻璃（搜索框、快捷入口胶囊、选中滑块）按 21st.dev「Apple Liquid glass switcher」（Den Dionigi）移植：多层内阴影高光 + `backdrop-filter: url(#位移滤镜)` 折射背后的内容，选中滑块移动时弹一下。原版位移图是按 344×76 胶囊画的，这里按每块玻璃的实际尺寸用光学公式（squircle 斜面 + 斯涅尔折射）现算，尺寸变化时重算。
+其他 Chromium 内核浏览器（Brave、Opera、Vivaldi、Arc 等）可以按 Chrome 的步骤安装，但未逐一测试。Safari 暂不支持。
 
-## 安装
+## 功能
 
-1. 在 [Releases](../../releases) 下载 `margin.zip` 并解压，或自行构建（见下）
-2. 打开 `chrome://extensions`（Edge 为 `edge://extensions`），开启「开发者模式」
-3. 点「加载已解压的扩展程序」，选择解压后的文件夹
+| 模块 | 可以做什么 |
+| --- | --- |
+| 首页与搜索 | 个性推荐、热门视频、无限加载、换一批，以及关键词、UP 主、播放量和时长过滤。 |
+| 原生播放 | 重新排版标题、UP 主卡片、选集与推荐列表，保留原生播放器、弹幕、评论、清晰度及全屏操作。 |
+| 收藏与稍后再看 | 玻璃文件夹收藏抽屉、稍后再看列表、观看进度和视频右键菜单。 |
+| 足迹 | 年 / 月热力图、每日首次打开时间与停留时长、观看历史补全、数据来源提示。 |
+| 阅读与账号页面 | 动态、图文、专栏的阅读布局，以及个人空间、历史、动态流和消息页面的统一界面。 |
+| 外观与背景 | 亮色、暗色、跟随系统；13 款动态背景、自定义图片与强度调节，包含汇流和点击冲击波。 |
+| 快捷操作 | 搜索联想、命令面板、悬停预览、可翻面的头像工牌和可修改城市的天气卡片。 |
+| 本地数据 | 设置与足迹保存在本机，可导出和导入 JSON 备份。 |
 
-手动安装的版本不会自动更新，有新版本时扩展弹窗顶部会提示。Edge 加载项商店版本上架后会由浏览器自动更新。隐私政策见 [PRIVACY.md](PRIVACY.md)。
+部分账号功能需要登录 B 站；是否可用也受 B 站自身的接口、权限与地区限制影响。
 
-## 开发
+## 常见问题
+
+### 怎么临时回到 B 站原版？
+
+在顶栏菜单选择**原版**，或在页面链接中添加 `?margin=off`。也可以在扩展弹窗中关闭 MARGIN。
+
+### 会替换播放器或影响我的账号吗？
+
+播放仍由 B 站原生播放器负责。扩展使用你当前的 B 站登录状态请求页面所需的数据；收藏、稍后再看等操作仍通过 B 站接口完成。
+
+### 会自动更新吗？
+
+手动加载的解压版需要按上面的步骤更新；弹窗会提示 GitHub 新版本。从 Edge 商店安装的版本由浏览器分发审核通过的更新。
+
+### 动态背景是否一直运行？
+
+页面可见时，背景在滚动和视频播放期间保持动态；标签页隐藏时暂停，并遵循系统的“减少动态效果”设置。开场动画覆盖页面时会暂缓底层背景绘制。渲染采用自适应调度，实际帧率取决于设备和页面负载，不保证所有场景固定 60fps。参见[性能说明](docs/performance-v0.31.0.md)。
+
+## 隐私
+
+开发者不运营统计或数据收集服务器。设置、足迹与自定义背景保存在本机；导出备份由你自行保存。
+
+天气功能会请求 `ipwho.is` 获取粗略城市定位，并向 Open-Meteo 请求城市搜索和天气预报；这些服务会收到必要的 IP、城市或坐标信息。B 站账号、收藏与观看历史不会发送给天气服务。完整说明见[隐私政策](PRIVACY.md)。
+
+本扩展为独立开源项目，**非 bilibili 官方产品，与哔哩哔哩无关联**。
+
+## 开发与贡献
+
+使用 Node.js 22 安装依赖并构建：
 
 ```bash
-npm install
-npm run build   # 产物在 dist/
-npm run pack    # 生成 margin.zip
+npm ci
+npm run build
 ```
 
-源码结构：
+构建结果在 `dist/`，可直接作为解压扩展加载。在提供 `zip` 命令的环境中运行 `npm run pack`，会生成 `margin.zip`。
 
-```
-src/
-  content/        内容脚本：首页接管与界面
-    api/          B 站接口、WBI 签名、MD5、收藏夹、预览地址
-    bg/           WebGL 背景着色器
-    filter.ts     推荐过滤规则
-    ui/           界面组件（原生 DOM + Shadow DOM）
-    styles.css    页面样式（以字符串注入 Shadow DOM）
-  popup/          扩展弹窗
-  shared/         设置读写（chrome.storage.local）
-public/           manifest、弹窗 HTML、图标
-scripts/build.mjs Vite 构建（每个入口打成独立 IIFE）
-```
+页面使用原生 TypeScript、CSS 和 Shadow DOM；Vite 按路由拆分页面模块，后台 service worker 负责合并足迹计时，中文字体按字符范围分包。
+
+欢迎[报告问题或提出建议](https://github.com/jiuyang5354/bilibili-margin/issues)。提交界面修改时，请附上页面地址、复现步骤和截图；修改播放页时保留 B 站原生播放能力。设计来源与第三方署名见[设计参考与致谢](docs/design-references.md)。
+- 21st「Video Player」（chetanverma16）：播放器浮动控制坞（v0.40.0）
+- 21st「Post Card」（shadcnui-blocks）：播放页播放器 + 互动 + 简介合成一张卡片（v0.41.0）
 
 ## 许可
 
-MIT © 2026 jiuyang5354
-
-首页足迹热力图的液态玻璃借鉴 bubbbly「GitHub Glass Card」的 WebGL 透镜思路：背景着色器先画进纹理，再在卡片位置做边缘折射、内部模糊、顶光高光与乳白 / 墨色染色（改写为圆角矩形 SDF，自写实现）。命令面板 v0.10 改为两栏：左边搜索，右边命令。
+[MIT License](LICENSE) © 2026 jiuyang5354。第三方组件、字体与素材的许可分别见[设计参考与致谢](docs/design-references.md)和[字体许可说明](public/fonts/FONTS-LICENSES.md)。

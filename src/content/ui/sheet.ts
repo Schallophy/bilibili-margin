@@ -30,12 +30,14 @@ export function createSheet(opts: { title: string; eyebrow: string; width?: numb
       el.dataset.open = 'true';
       el.inert = false;
       opts.onOpen?.();
+      el.dispatchEvent(new CustomEvent('margin:sheet', { bubbles: true }));
       requestAnimationFrame(() => panel.focus({ preventScroll: true }));
     },
     close() {
       if (!api.isOpen()) return;
       el.dataset.open = 'false';
       el.inert = true;
+      el.dispatchEvent(new CustomEvent('margin:sheet', { bubbles: true }));
       (last as HTMLElement | null)?.focus?.({ preventScroll: true });
     },
     isOpen: () => el.dataset.open === 'true',

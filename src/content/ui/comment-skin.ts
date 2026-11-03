@@ -52,6 +52,7 @@ function skin(root: ParentNode, depth = 0): void {
 
 /** extra：按页面追加到某个组件皮肤后面的样式（详情页隐藏评论区重复的大标题） */
 export function skinComments(more: Record<string, string> = {}): void {
+  enterToSend();
   extra = more;
   const run = () => { const bc = document.querySelector('bili-comments'); if (bc) skin(bc.parentElement ?? document); };
   // 前 90 秒每秒补一次（评论区是懒加载的 Web Components）；页面隐藏时暂停
@@ -59,4 +60,34 @@ export function skinComments(more: Record<string, string> = {}): void {
   const stop = every(1000, () => { run(); if (++n > 90) stop(); });
   let pending = 0;
   addEventListener('scroll', () => { if (pending) return; pending = window.setTimeout(() => { pending = 0; run(); }, 400); }, { passive: true });
+}
+
+/**
+ * 回车直接发评论（v0.47.4，用户要求）：B 站原生评论框里回车只换行，要点「发布」。
+ * 改成：回车发送，Shift+回车换行；输入法选字中（isComposing / keyCode 229）、正在打 @ 某人时不发送，交给原生处理。
+ * 评论框在多层 shadow root 里，用 composedPath 找到所在的 bili-comment-box，再点它自己的发布按钮。
+ */
+let enterHooked = false;
+export function enterToSend(): void {
+  if (enterHooked) return;
+  enterHooked = true;
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || e.keyCode === 229) return;
+    const path = e.composedPath();
+    const editable = path.find((n): n is HTMLElement => n instanceof HTMLElement && (n.isContentEditable || n.tagName === 'TEXTAREA'));
+    if (!editable) return;
+    const box = path.find((n): n is HTMLElement => n instanceof HTMLElement && n.tagName === 'BILI-COMMENT-BOX');
+    if (!box?.shadowRoot) return;
+    const text = (editable as HTMLTextAreaElement).value ?? editable.innerText ?? '';
+    if (!text.trim()) return;
+    // 正在输入 @用户名：回车留给原生的候选列表
+    const sel = (editable.getRootNode() as ShadowRoot & { getSelection?: () => Selection | null }).getSelection?.() ?? getSelection();
+    const before = sel && sel.anchorNode ? (sel.anchorNode.textContent ?? '').slice(0, sel.anchorOffset) : '';
+    if (/@[^\s@]{0,20}$/.test(before)) return;
+    const btn = box.shadowRoot.querySelector<HTMLElement>('#pub button') ?? box.shadowRoot.querySelector<HTMLElement>('#pub');
+    if (!btn || btn.hasAttribute('disabled')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    btn.click();
+  }, true);
 }

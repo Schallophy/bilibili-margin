@@ -1,11 +1,14 @@
+import { attachPreview } from './preview';
 import type { Settings } from '../../shared/settings';
 import { nav } from '../api/http';
 import { account, accountStat } from '../api/account';
 import { followFeed, portal, type FeedType, type LiveUp, type Up } from '../api/dyn';
 import { hotSearch } from '../api/search';
 import { dynCard } from './dyn';
+import { compileDynFilter } from '../filter';
 import { fmtCount, h, icon, ICONS } from './dom';
 import { PageShell } from './shell';
+import { targetOfDyn } from '../filter-targets';
 
 const TYPES: [FeedType, string][] = [['all', '全部'], ['video', '视频投稿'], ['pgc', '追番追剧'], ['article', '专栏']];
 const ext = { target: '_blank', rel: 'noopener' };
@@ -52,6 +55,7 @@ export class FeedApp {
     }));
     const post = h('a', { class: 'fd-post', href: 'https://t.bilibili.com/?margin=off', title: '在 B 站原版里发动态' }, icon('<path d="M12 5v14M5 12h14"/>'), h('span', {}, '发动态'));
     this.list = h('div', { class: 'dy-list fd-list' });
+    attachPreview(this.list, () => this.shell.settings.hoverPreview);
     this.status = h('div', { class: 'status' });
     this.sentinel = h('div', { class: 'sentinel' });
     const center = h('section', { class: 'fd-main' },
@@ -63,6 +67,10 @@ export class FeedApp {
       this.list, this.status, this.sentinel);
     s.main.append(h('div', { class: 'fd' }, left, center, right));
     new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) this.load(); }, { root: s.app, rootMargin: '1200px 0px' }).observe(this.sentinel);
+    // 动态流同时用 compileDynFilter（含转发内容）和 FilterRuntime，条件变化后重新拉取一次
+    this.shell.filter.onChange(() => this.reload());
+    let st = 0;
+    s.app.addEventListener('scroll', () => { clearTimeout(st); st = window.setTimeout(() => this.fill(), 160); }, { passive: true });
 
     this.renderHot(right);
     nav().then((n) => {
@@ -99,7 +107,7 @@ export class FeedApp {
     if (!live.length) return;
     left.append(h('section', { class: 'fd-card fd-live' },
       h('div', { class: 'fd-card-h' }, h('span', {}, '正在直播'), h('b', {}, String(count))),
-      ...live.slice(0, 10).map((u) => h('a', { class: 'fd-live-row', href: u.url, ...ext },
+      ...live.map((u) => h('a', { class: 'fd-live-row', href: u.url, ...ext },
         h('span', { class: 'fd-live-face' }, face(u.face, '', 80)),
         h('span', { class: 'fd-live-b' }, h('b', {}, u.name), h('span', {}, u.title))))));
   }
@@ -107,7 +115,7 @@ export class FeedApp {
   private renderUps(ups: Up[]): void {
     if (!ups.length) return;
     const mk = (mid: number, name: string, img: Node, fresh = false) => {
-      const b = h('button', { class: 'fd-up', type: 'button', title: name, 'aria-pressed': String(mid === this.host) }, img, h('span', {}, name));
+      const b = h('button', { class: 'fd-up', type: 'button', title: fresh ? `${name} · 有新动态` : name, 'aria-pressed': String(mid === this.host) }, h('span', { class: 'fd-up-face' }, img), h('span', { class: 'fd-up-name' }, name));
       b.dataset.mid = String(mid);
       if (fresh) b.classList.add('fresh');
       b.addEventListener('click', () => {
@@ -120,7 +128,7 @@ export class FeedApp {
     };
     this.strip.replaceChildren(
       mk(0, '全部动态', h('span', { class: 'fd-up-all' }, icon(ICONS.moments))),
-      ...ups.slice(0, 24).map((u) => mk(u.mid, u.name, face(u.face, '', 96), u.fresh)));
+      ...[...ups].sort((x, y) => Number(y.fresh) - Number(x.fresh)).slice(0, 30).map((u) => mk(u.mid, u.name, face(u.face, '', 96), u.fresh)));
   }
 
   private async renderHot(right: HTMLElement): Promise<void> {
@@ -160,7 +168,12 @@ export class FeedApp {
       const r = await followFeed(this.host ? 'all' : this.type, this.offset, this.host);
       if (gen !== this.gen) return;
       sk.forEach((n) => n.remove());
-      r.list.forEach((d) => this.list.append(dynCard(d, false, true)));
+      const keep = compileDynFilter(this.shell.settings.filters);
+      r.list.filter(keep).forEach((d) => {
+        const card = dynCard(d, false, true);
+        card.toggleAttribute('data-margin-filtered', !this.shell.filter.allows(targetOfDyn(d)));
+        this.list.append(card);
+      });
       this.offset = r.offset;
       this.done = !r.more || !r.offset;
       if (!this.list.children.length) this.list.append(h('div', { class: 'ms-empty' }, h('p', {}, '这里还空着')));
@@ -173,5 +186,13 @@ export class FeedApp {
     } finally {
       if (gen === this.gen) this.loading = false;
     }
+    if (gen === this.gen) requestAnimationFrame(() => this.fill());
+  }
+
+  /** 哨兵加载完仍在视口附近时 IntersectionObserver 不会再触发，按剩余高度补查 */
+  private fill(): void {
+    if (this.done || this.loading) return;
+    const a = this.shell.app;
+    if (a.scrollHeight - a.scrollTop - a.clientHeight < 1400) this.load();
   }
 }

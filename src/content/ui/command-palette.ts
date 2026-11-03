@@ -1,5 +1,6 @@
+import { loadSettings, onSettingsChange } from '../../shared/settings';
 import { forgetSearch, hotSearch, rememberSearch, searchHistory, searchUrl, suggest } from '../api/search';
-import { h, icon, ICONS } from './dom';
+import { h, highlight, icon, ICONS } from './dom';
 
 /**
  * 命令面板：21st「Command Palette」（rafa-porto，Raycast 风格）的原生移植。
@@ -90,7 +91,7 @@ export function createCommandPalette(commands: Command[]): Palette {
 
   function item(row: Row, idx: number, key: 'cp' | 'cc', compact: boolean): HTMLElement {
     const t = h('span', { class: 'cp-t' });
-    if (row.titleHtml) t.innerHTML = row.titleHtml.replace(/<em class="suggest_high_light">/g, '<mark>').replace(/<\/em>/g, '</mark>'); else t.textContent = row.title;
+    if (row.titleHtml) highlight(t, row.titleHtml); else t.textContent = row.title;
     const p = key === 'cp' ? 'l' : 'r';
     return h('div', { class: 'cp-item', role: 'option', id: `${key}-${idx}`,
       onpointermove: () => { if (pane !== p || (p === 'l' ? sel : csel) !== idx) { pane = p; if (p === 'l') sel = idx; else csel = idx; mark(); } },
@@ -176,8 +177,11 @@ export function createCommandPalette(commands: Command[]): Palette {
     (lastFocus as HTMLElement | null)?.blur?.();
   }
 
+  let cmdK = true;
+  loadSettings().then((st) => { cmdK = st.cmdK; }).catch(() => {});
+  onSettingsChange((n) => { cmdK = n.cmdK; });
   addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); el.dataset.open === 'true' ? close() : open(); return; }
+    if (cmdK && (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); el.dataset.open === 'true' ? close() : open(); return; }
     if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || el.dataset.open === 'true') return;
     const typing = e.composedPath().some((n) => n instanceof HTMLInputElement || n instanceof HTMLTextAreaElement || (n instanceof HTMLElement && n.isContentEditable));
     if (typing) return;

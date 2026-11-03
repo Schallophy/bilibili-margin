@@ -12,13 +12,51 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = 
   return el;
 }
 
-export function svg(markup: string): Node {
-  const t = document.createElement('template');
-  t.innerHTML = markup.trim();
-  return t.content.firstChild as Node;
+/**
+ * 把扩展自带的静态标记（图标 SVG、固定结构）解析成节点。用 DOMParser 而不是 innerHTML：
+ * 解析出的文档是惰性的（脚本不执行、资源不加载），再导入当前文档。不要把网络来的 HTML 传进来，
+ * B 站接口返回的高亮片段走 highlight()。
+ */
+const parser = new DOMParser();
+function nodes(markup: string, inSvg: boolean): Node[] {
+  const doc = parser.parseFromString(inSvg ? `<svg xmlns="http://www.w3.org/2000/svg">${markup}</svg>` : markup, 'text/html');
+  const host = inSvg ? doc.body.firstElementChild! : doc.body;
+  return [...host.childNodes].map((n) => document.importNode(n, true));
+}
+/** 用静态标记替换 el 的全部子节点；el 是 SVG 元素（defs / filter / svg）时按 SVG 解析 */
+export function setMarkup(el: Element, markup: string): void {
+  el.replaceChildren(...nodes(markup, el instanceof SVGElement));
+}
+/** 在 el 末尾追加静态标记 */
+export function appendMarkup(el: Element, markup: string): void {
+  el.append(...nodes(markup, el instanceof SVGElement));
+}
+/**
+ * B 站搜索联想返回带 <em class="suggest_high_light"> 的 HTML。只保留高亮，其余一律当纯文本：
+ * 拆成文本节点和 <mark>，不把接口内容当 HTML 插入。
+ */
+export function highlight(el: Element, html: string): void {
+  const text = (s: string) => parser.parseFromString(s.replace(/<[^>]*>/g, ''), 'text/html').body.textContent ?? '';
+  const out: Node[] = [];
+  html.split(/(<em class="suggest_high_light">[\s\S]*?<\/em>)/).forEach((part, i) => {
+    if (!part) return;
+    if (i % 2) { const m = document.createElement('mark'); m.textContent = text(part); out.push(m); }
+    else out.push(document.createTextNode(text(part)));
+  });
+  el.replaceChildren(...out);
 }
 
-export const icon = (paths: string) => svg(`<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`);
+export function svg(markup: string): Node {
+  return nodes(markup.trim(), false)[0];
+}
+
+// 同一个图标只解析一次，之后克隆（v0.44：首页每张卡片都要建几个图标，DOMParser 很贵）
+const iconCache = new Map<string, Node>();
+export const icon = (paths: string) => {
+  let t = iconCache.get(paths);
+  if (!t) { t = svg(`<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`); iconCache.set(paths, t); }
+  return t.cloneNode(true);
+};
 
 export const ICONS = {
   logo: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M8 5v14M16 5v14M3 12h18"/>',
@@ -45,6 +83,8 @@ export const ICONS = {
   top: '<path d="M6 15l6-6 6 6"/><path d="M5 5h14"/>',
   command: '<path d="M9 6.5a2.5 2.5 0 1 0-2.5 2.5H9V6.5Zm0 0v11m0-11h6m-6 11a2.5 2.5 0 1 1-2.5-2.5H9v2.5Zm0 0h6m0-11a2.5 2.5 0 1 1 2.5 2.5H15V6.5Zm0 0v11m0 0a2.5 2.5 0 1 0 2.5-2.5H15v2.5ZM9 9h6v6H9z"/>',
   palette: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M3.5 12h17" opacity=".0"/><path d="M15.5 8.5a5 5 0 0 0-7 7"/>',
+  zone: '<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><circle cx="17" cy="17" r="3.5"/>',
+  live: '<rect x="3.5" y="7" width="17" height="12.5" rx="2.5"/><path d="m8.5 3.5 3.5 3.5 3.5-3.5"/><circle cx="12" cy="13.25" r="2.25"/>',
   vip: '<path d="M4 8.5l4 3.5 4-6 4 6 4-3.5-1.6 9.5H5.6z"/>',
   creator: '<path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/>',
   upload: '<path d="M12 16V5M7.5 9.5 12 5l4.5 4.5"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/>',

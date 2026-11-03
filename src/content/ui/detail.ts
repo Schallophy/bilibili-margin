@@ -14,6 +14,9 @@ import { getJSON } from '../api/http';
 import { spaceVideos, follow } from '../api/space';
 import { csrf, https } from './shell';
 import { skinComments } from './comment-skin';
+import type { Video } from '../api/feed';
+import type { FilterRuntime } from '../filter-runtime';
+import { targetOfVideo } from '../filter-targets';
 
 export type DetailKind = 'opus' | 'dyn' | 'read' | 'bangumi';
 
@@ -107,7 +110,18 @@ hr { margin: 0; border: 0; height: 1px; background: var(--m-line); }
 .hint { margin: 0; font-size: 12px; line-height: 16px; color: var(--m-muted); }
 .hint kbd { font: 11px/1 var(--m-mono); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--m-line); }
 
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+:host([data-motion="reduced"]) *,
+:host([data-motion="reduced"]) *::before,
+:host([data-motion="reduced"]) *::after {
+  animation-duration: .001ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+  transition-delay: 0s !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
+}
 `;
 
 const MAIN: Record<Exclude<DetailKind, 'bangumi'>, string> = {
@@ -155,10 +169,15 @@ export class DetailAside {
   private acts = new Map<string, HTMLButtonElement>();
   private disposers: (() => void)[] = [];
 
-  constructor(private kind: Exclude<DetailKind, 'bangumi'>) {
+  constructor(private kind: Exclude<DetailKind, 'bangumi'>, private filter?: FilterRuntime) {
     this.root = this.host.attachShadow({ mode: 'open' });
     this.root.append(h('style', {}, CSS), this.aside);
     this.host.hidden = true;
+    const syncMotion = () => {
+      this.host.dataset.motion = document.documentElement.classList.contains('margin-reduce') ? 'reduced' : '';
+    };
+    syncMotion();
+    document.addEventListener('margin:motion', syncMotion);
     document.documentElement.append(this.host);
     this.waitMain();
   }
@@ -274,11 +293,18 @@ export class DetailAside {
 
   // ── 相关：UP 主最近投稿 ──
   private relEl = h('div', { class: 'sec' });
+  private relVideos: Video[] = [];
   private relatedSection(): HTMLElement { this.relEl.hidden = true; return this.relEl; }
   private async loadRelated(mid: number): Promise<void> {
     const r = await spaceVideos(mid, 1, 'pubdate').catch(() => null);
-    const list = r?.list.slice(0, 3) ?? [];
-    if (!list.length) { this.relEl.remove(); return; }
+    this.relVideos = r?.list.slice(0, 3) ?? [];
+    if (!this.relVideos.length) { this.relEl.remove(); return; }
+    this.filter?.onChange(() => this.paintRelated());
+    this.paintRelated();
+  }
+  private paintRelated(): void {
+    const list = this.relVideos.filter((v) => this.filter?.allows(targetOfVideo(v)) ?? true);
+    if (!list.length) { this.relEl.hidden = true; return; }
     const ul = h('ul', { class: 'rel' });
     for (const v of list) {
       ul.append(h('li', {}, h('a', { href: `https://www.bilibili.com/video/${v.bvid}`, target: '_blank', rel: 'noopener' },
@@ -348,9 +374,9 @@ export class DetailAside {
 }
 
 /** 挂载详情页增强；番剧页只补评论区皮肤（版式在 detail.css 里） */
-export function mountDetail(kind: DetailKind): DetailAside | null {
+export function mountDetail(kind: DetailKind, filter?: FilterRuntime): DetailAside | null {
   // 详情页的「评论 / 赞与转发」标签已经写了评论数，评论区自己的大标题就不再重复
-  skinComments(kind === 'bangumi' ? undefined : { 'bili-comments-header-renderer': '#title { display: none !important; } #sort-actions { margin-left: 0 !important; }' });
+  skinComments(kind === 'bangumi' ? undefined : { 'bili-comments-header-renderer': '#title { display: none !important; } #sort-actions { margin-left: 0 !important; } #navbar { padding-top: 20px !important; }' });
   if (kind === 'bangumi') return null;
-  return new DetailAside(kind);
+  return new DetailAside(kind, filter);
 }

@@ -1,13 +1,15 @@
 import { createFolder, deleteFolder, folderVideos, folders, type Folder } from '../api/fav';
-import { videoCard, skeleton } from './card';
+import { videoCard, skeleton, cardData } from './card';
 import { h, icon, ICONS } from './dom';
-import { glassFolder, type GFFile } from './glass-folder';
+import { glassFolder, type GFFile, type GlassFolderApi } from './glass-folder';
 import type { ArtPreset } from './folder-art';
 import type { Video } from '../api/feed';
 import { createSheet, type Sheet } from './sheet';
+import type { FilterRuntime } from '../filter-runtime';
+import { targetOfVideo } from '../filter-targets';
 
 /** 收藏夹抽屉：玻璃文件夹 → 视频网格（无限加载） */
-export function createFavorites(onRender: (grid: HTMLElement) => void): Sheet {
+export function createFavorites(onRender: (grid: HTMLElement) => void, direct: () => boolean = () => false, filter?: FilterRuntime): Sheet {
   let loaded = false;
   const shelf = h('div', { class: 'shelf' });
   const grid = h('div', { class: 'grid fav-grid' });
@@ -48,6 +50,19 @@ export function createFavorites(onRender: (grid: HTMLElement) => void): Sheet {
   const firstPage = new Map<number, Promise<{ list: Video[]; more: boolean }>>();
   const page1 = (id: number) => { let p = firstPage.get(id); if (!p) { p = folderVideos(id, 1); p.catch(() => firstPage.delete(id)); firstPage.set(id, p); } return p; };
   const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  // 文件夹预览的原始数据：屏蔽词变化时只重算扇形文件，不重新请求
+  const previews = new Map<number, { gf: GlassFolderApi; raw: Video[] }>();
+  const paintPreview = (id: number) => {
+    const entry = previews.get(id);
+    if (!entry) return;
+    const visible = filter ? entry.raw.filter((v) => filter.allows(targetOfVideo(v))) : entry.raw;
+    const files: GFFile[] = visible.slice(0, 4).reverse().map((v) => ({
+      name: v.title, meta: v.duration ? mmss(v.duration) : undefined,
+      image: v.cover ? `${v.cover}@544w_368h_1c.webp` : undefined, art: v.cover ? undefined : ARTS[v.mid % ARTS.length],
+      href: `https://www.bilibili.com/video/${v.bvid}`,
+    }));
+    entry.gf.setFiles(files);
+  };
 
   /** 玻璃文件夹（按 21st「Glass Folder Cards」源码原生移植）：
    *  后板是收藏夹封面（没有封面就生成液态纹理），口袋里是最近收藏的 4 个视频，
@@ -62,6 +77,8 @@ export function createFavorites(onRender: (grid: HTMLElement) => void): Sheet {
       width: 236,
       appearDelay: i * 140,
       onOpenChange: (o) => { if (o) open(f); },
+      direct,
+      onDirect: () => { open(f); requestAnimationFrame(() => crumb.scrollIntoView({ behavior: 'smooth', block: 'start' })); },
       menu: [
         { label: '查看全部视频', onSelect: () => { open(f); crumb.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
         { label: '在 B 站打开', onSelect: () => window.open(`https://space.bilibili.com/${f.mid}/favlist?fid=${f.id}`, '_blank', 'noopener') },
@@ -69,14 +86,12 @@ export function createFavorites(onRender: (grid: HTMLElement) => void): Sheet {
       ],
     });
     gf.el.dataset.id = String(f.id);
+    previews.set(f.id, { gf, raw: [] });
     page1(f.id).then((r) => {
-      // 最新收藏放在最前面（离玻璃最近）
-      const files: GFFile[] = r.list.slice(0, 4).reverse().map((v) => ({
-        name: v.title, meta: v.duration ? mmss(v.duration) : undefined,
-        image: v.cover ? `${v.cover}@544w_368h_1c.webp` : undefined, art: v.cover ? undefined : ARTS[v.mid % ARTS.length],
-        href: `https://www.bilibili.com/video/${v.bvid}`,
-      }));
-      gf.setFiles(files);
+      const entry = previews.get(f.id);
+      if (!entry) return;
+      entry.raw = r.list;
+      paintPreview(f.id);
     }).catch(() => {});
     return gf.el;
   }
@@ -136,6 +151,7 @@ export function createFavorites(onRender: (grid: HTMLElement) => void): Sheet {
     }
     folderList = folderList.filter((x) => x.id !== f.id);
     firstPage.delete(f.id);
+    previews.delete(f.id);
     shelf.querySelector<HTMLElement>(`.gf-root[data-id="${f.id}"]`)?.remove();
     if (current?.id === f.id) { current = null; if (folderList[0]) open(folderList[0]); else { crumb.replaceChildren(); grid.replaceChildren(); status.replaceChildren(); } }
   }
@@ -166,7 +182,11 @@ export function createFavorites(onRender: (grid: HTMLElement) => void): Sheet {
       if (g !== gen) return;
       sk.forEach((n) => (n as Element).remove());
       const start = grid.children.length;
-      r.list.forEach((v, i) => grid.append(videoCard(v, start + i, { compact: true })));
+      r.list.forEach((v, i) => {
+        const card = videoCard(v, start + i, { compact: true });
+        card.toggleAttribute('data-margin-filtered', filter ? !filter.allows(targetOfVideo(v)) : false);
+        grid.append(card);
+      });
       more = r.more;
       if (!more) status.replaceChildren(h('span', {}, grid.children.length ? '到底了' : '这个收藏夹是空的'));
     } catch (e) {
@@ -179,5 +199,14 @@ export function createFavorites(onRender: (grid: HTMLElement) => void): Sheet {
   }
 
   new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) load(); }, { root: sheet.body, rootMargin: '600px 0px' }).observe(sentinel);
+  filter?.onChange(() => {
+    grid.querySelectorAll<HTMLElement>('.card').forEach((card) => {
+      const v = cardData.get(card);
+      if (v) card.toggleAttribute('data-margin-filtered', !filter.allows(targetOfVideo(v)));
+    });
+    for (const id of previews.keys()) paintPreview(id);
+  });
+  // 顶栏「收藏夹」弹窗里的「全部收藏」：本页有收藏夹面板就直接打开，不再新开标签页
+  addEventListener('margin:open-fav', (e) => { e.preventDefault(); sheet.open(); });
   return sheet;
 }

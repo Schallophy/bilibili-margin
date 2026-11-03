@@ -1,0 +1,50 @@
+/* 全局屏蔽词/广告过滤标记：只隐藏，不删除原生节点，便于关闭后恢复 */
+html [data-margin-filtered] { display: none !important; }
+
+/* 广告过滤：统一注册在这里，html.margin-ads-hide 由设置开关同步。
+   只使用 B 站明确的容器类名，避免误伤正常内容。 */
+html.margin-ads-hide .ad-report,
+html.margin-ads-hide .slide-ad-exp,
+html.margin-ads-hide .video-card-ad-small,
+html.margin-ads-hide .ad-floor-exp,
+html.margin-ads-hide #slide_ad,
+html.margin-ads-hide .pop-live-small-mode,
+html.margin-ads-hide .video-page-game-card-small,
+html.margin-ads-hide .video-page-special-card-small,
+html.margin-ads-hide .activity-m-v1,
+html.margin-ads-hide .reply-notice,
+html.margin-ads-hide .vcd,
+html.margin-ads-hide .brand-ad-list,
+html.margin-ads-hide .activity-game-list,
+html.margin-ads-hide .search-ad-card,
+html.margin-ads-hide .bili-video-card__info--ad,
+html.margin-ads-hide .video-list-item:has(.bili-video-card__info--ad),
+html.margin-ads-hide .video-card:has(.bili-video-card__info--ad),
+html.margin-ads-hide .rank-item:has(.bili-video-card__info--ad),
+html.margin-ads-hide .bangumi-list .ad-report { display: none !important; }
+
+/* 用户主动减少动画：只作用于映间换皮的页面，保留最终静态帧 */
+html.margin-skin.margin-reduce *,
+html.margin-skin.margin-reduce *::before,
+html.margin-skin.margin-reduce *::after {
+  animation-duration: .001ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+/* 系统减少动态效果：同样作用于换皮页面的原生 DOM */
+@media (prefers-reduced-motion: reduce) {
+  html.margin-skin *,
+  html.margin-skin *::before,
+  html.margin-skin *::after {
+    animation-duration: .001ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}

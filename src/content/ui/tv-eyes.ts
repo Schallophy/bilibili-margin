@@ -7,6 +7,8 @@
  */
 import { introActive, onIntroEnd } from './intro/gate';
 import { BILI_TIGHT } from './intro/logo';
+import { setMarkup } from './dom';
+import { onMotionChange, reducedMotion } from '../motion';
 
 const VERT = `attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}`;
 
@@ -86,11 +88,10 @@ export function liveTv(span: HTMLElement): void {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-  span.innerHTML = FRAME;
+  setMarkup(span, FRAME);
   span.append(canvas);
   span.classList.add('live');
 
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
   const look = { x: 0, y: 0 }, target = { x: 0, y: 0 }, glance = { x: 0, y: 0 };
   let color = rgb(getComputedStyle(span).color);
   let raf = 0, timer = 0, lost = false, onScreen = true;
@@ -98,8 +99,10 @@ export function liveTv(span: HTMLElement): void {
   let nextBlink = performance.now() + 1800 + Math.random() * 2400;
   let nextGlance = performance.now() + 1500 + Math.random() * 1500;
 
+  // 尺寸来自 ResizeObserver 的缓存：动画帧里读 clientWidth 会在滚动时强制同步布局（v0.44 性能）
+  let cw = 0, ch = 0;
   const resize = () => {
-    const w = canvas.clientWidth, hgt = canvas.clientHeight;
+    const w = cw, hgt = ch;
     if (!w || !hgt) return;
     const dpr = Math.min(devicePixelRatio || 1, 3);
     const W = Math.round(w * dpr), H = Math.round(hgt * dpr);
@@ -119,9 +122,10 @@ export function liveTv(span: HTMLElement): void {
 
   const tick = (now: number) => {
     raf = 0;
-    if (!awake()) return;
-    const still = reduce.matches;
+    if (!awake() || !cw) return;
+    const still = reducedMotion();
     const steering = now - pointerAt < IDLE_MS;
+    if (steering) steer();
     if (!steering && !still && now >= nextGlance) {
       const back = Math.random() < 0.3;
       glance.x = back ? 0 : (Math.random() * 2 - 1) * 0.8;
@@ -152,29 +156,36 @@ export function liveTv(span: HTMLElement): void {
     raf = requestAnimationFrame(tick);
   }
 
+  // 指针事件里只记坐标，位置换算放到动画帧里做：每次 pointermove 都读 getBoundingClientRect 会强制布局
+  let px = 0, py = 0, aim = false;
   addEventListener('pointermove', (e) => {
-    const r = span.getBoundingClientRect();
-    if (!r.width) return;
-    // 距离越远看得越偏，指针在页面另一头时基本看到底；不像原组件那样一出圆就顶满
-    const dx = e.clientX - (r.left + r.width / 2), dy = r.top + r.height / 2 - e.clientY;
-    target.x = dx / (Math.abs(dx) + 200);
-    target.y = dy / (Math.abs(dy) + 160);
+    px = e.clientX; py = e.clientY; aim = true;
     pointerAt = performance.now();
     wake();
   }, { passive: true });
+  const steer = () => {
+    if (!aim) return;
+    aim = false;
+    const r = span.getBoundingClientRect();
+    if (!r.width) return;
+    // 距离越远看得越偏，指针在页面另一头时基本看到底；不像原组件那样一出圆就顶满
+    const dx = px - (r.left + r.width / 2), dy = r.top + r.height / 2 - py;
+    target.x = dx / (Math.abs(dx) + 200);
+    target.y = dy / (Math.abs(dy) + 160);
+  };
   new IntersectionObserver(([en]) => { onScreen = en?.isIntersecting ?? true; wake(); }).observe(span);
   document.addEventListener('visibilitychange', wake);
-  reduce.addEventListener('change', wake);
-  new ResizeObserver(() => { resize(); if (!raf) draw(0); }).observe(canvas);
+  onMotionChange(wake);
+  new ResizeObserver(([en]) => { if (!cw) syncColor(); cw = en.contentRect.width; ch = en.contentRect.height; resize(); if (!raf) draw(0); wake(); }).observe(canvas);
   // 昼夜切换：图标颜色跟着 .app[data-theme] 变
   const syncColor = () => { const c = rgb(getComputedStyle(span).color); if (c.join() !== color.join()) { color = c; if (!raf) draw(0); } };
   const hook = () => {
     const app = span.closest('.app');
-    if (app) new MutationObserver(syncColor).observe(app, { attributes: true, attributeFilter: ['data-theme', 'class'] });
-    syncColor();
-    resize(); draw(0); wake();
+    if (app) new MutationObserver(syncColor).observe(app, { attributes: true, attributeFilter: ['data-theme', 'data-palette'] });
+    // 颜色、尺寸和第一帧都交给 ResizeObserver（布局完成后才回调，这时读样式不会强制整页重算）
+    wake();
   };
   if (span.isConnected) hook(); else { let n = 0; requestAnimationFrame(function wait() { if (span.isConnected) hook(); else if (++n < 600) requestAnimationFrame(wait); }); }
 
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); lost = true; span.innerHTML = BILI_TIGHT; span.classList.remove('live'); });
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); lost = true; setMarkup(span, BILI_TIGHT); span.classList.remove('live'); });
 }

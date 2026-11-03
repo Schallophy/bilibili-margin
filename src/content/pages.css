@@ -61,7 +61,7 @@ html.margin-search:has(.search-input-wrap:focus-within) body::after { opacity: 1
 
 /* 分类标签：衬线 + 底部细线指示 */
 html.margin-search .search-tabs { border-bottom: 1px solid var(--m-line); }
-html.margin-search .vui_tabs--nav-item { color: var(--m-muted) !important; font-size: 15px !important; }
+html.margin-search .vui_tabs--nav-item { color: var(--m-muted) !important; font-size: 14px !important; }
 html.margin-search .vui_tabs--nav-item:hover { color: var(--m-ink) !important; }
 html.margin-search .vui_tabs--nav-item-active { color: var(--m-ink) !important; font-weight: 600 !important; }
 html.margin-search .vui_tabs--nav-item-active .vui_tabs--nav-text, html.margin-search .vui_tabs--nav-item-active { font-family: var(--m-serif) !important; }
@@ -102,9 +102,7 @@ html.margin-search .vui_pagenation--btn { border-radius: 999px !important; borde
 html.margin-search .vui_pagenation--btn-num.vui_button--active, html.margin-search .vui_pagenation--btn.vui_button--active { background: var(--m-ink) !important; color: var(--m-canvas) !important; }
 html.margin-search .vui_button--disabled { opacity: .45; }
 
-/* 广告 */
-html.margin-search .brand-ad-list, html.margin-search .activity-game-list, html.margin-search .search-ad-card,
-html.margin-search .bili-video-card__info--ad, html.margin-search .video-list-item:has(.bili-video-card__info--ad) { display: none !important; }
+/* 广告：统一由 global.css 的 html.margin-ads-hide 控制（v0.47） */
 
 /* ── 其他页面：热门 / 排行 / 番剧等，统一卡片圆角与表面 ── */
 html.margin-page .video-card__content img, html.margin-page .rank-item .img img,

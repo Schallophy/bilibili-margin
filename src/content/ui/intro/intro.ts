@@ -3,6 +3,7 @@ import { BILI, BILI_TIGHT } from './logo';
 export { BILI, BILI_TIGHT };
 export { shouldPlayIntro } from './gate';
 import { createRenderer, endOf, frameAt, loadLogo, LOOKS, type Settings } from './engine';
+import { setMarkup } from '../dom';
 
 /** B 站小电视（Simple Icons，CC0）——只取形状，颜色由主题给 */
 
@@ -74,7 +75,7 @@ export function playIntro(parent: HTMLElement, theme: 'light' | 'dark'): Promise
       const hgt = w * 21 / 24;
       const fly = document.createElement('div');
       fly.className = 'intro-fly';
-      fly.innerHTML = BILI_TIGHT;
+      setMarkup(fly, BILI_TIGHT);
       Object.assign(fly.style, { left: `${cr.left + cr.width / 2 - w / 2}px`, top: `${cr.top + cr.height / 2 - hgt / 2}px`, width: `${w}px`, height: `${hgt}px`, color: P.logoColor });
       parent.append(fly);
       canvas.style.visibility = 'hidden';
