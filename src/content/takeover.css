@@ -148,9 +148,11 @@ html.margin-reduce .sp-menu { animation: none; }
 .ms-n { font: 600 11px/1 var(--mono); color: #fff; background: #fb7299; border-radius: 999px; padding: 4px 8px; }
 .ms-n:empty { display: none; }
 .ms-pane { min-width: 0; }
-.ms-head { padding-bottom: 8px; }
+.ms-head { position: relative; padding-bottom: 8px; }
 .ms-head h2 { margin: 0; font: 600 28px/1.2 var(--serif); }
 .ms-head .eyebrow { margin-bottom: 10px; }
+/* 刷新按钮贴标题行右缘（列表更新偶尔慢半拍，手动一下立刻重拉） */
+.ms-head .ms-refresh { position: absolute; right: 0; bottom: 8px; }
 .ms-list { display: flex; flex-direction: column; }
 .ms-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; padding: 20px 0; align-items: start; }
 .ms-row + .ms-row { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }

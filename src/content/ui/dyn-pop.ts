@@ -249,11 +249,12 @@ export const POPS: Record<string, (o: { onDyn?: () => void; msgRemind?: () => bo
     load: async () => (await portal()).live.slice(0, 8).map((u) => ({ href: u.url, face: u.face, live: true, who: u.name, sub: '直播中', title: u.title || '正在直播' })),
   }),
   消息: (o) => ({
-    title: '消息', all: { href: 'https://message.bilibili.com/', label: '消息中心' }, empty: '', compact: true,
+    title: '消息', all: { href: 'https://message.bilibili.com/?margin-fresh=1', label: '消息中心' }, empty: '', compact: true,
     enabled: o.msgRemind,
     load: async () => {
       const u = await unread();
-      const M = 'https://message.bilibili.com/#/';
+      // margin-fresh=1：消息页加载后自刷新一次，规避第一次加载拿到旧数据（用户实测 F5 必新）
+      const M = 'https://message.bilibili.com/?margin-fresh=1#/';
       return [
         { href: `${M}reply`, title: '回复我的', count: u.reply },
         { href: `${M}at`, title: '@ 我的', count: u.at },

@@ -3,8 +3,11 @@ const https = (u: unknown) => String(u ?? '').replace(/^\/\//, 'https://').repla
 const BASE = { build: '0', mobi_app: 'web' };
 
 async function get<T>(url: string, params: Record<string, string | number> = {}): Promise<T> {
-  const q = new URLSearchParams({ ...BASE, ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])) });
-  const r = await fetch(`${url}?${q}`, { credentials: 'include' });
+  // _t 时间戳打散 URL：实测 msgfeed 的响应会被某层按 URL 为 key 的缓存（TTL 约半小时）冻住，
+  // cache: 'no-cache' 的重新验证会被 304 糊弄回去，同 URL 21 秒内两次都吐同一份 29 分钟前的旧数据。
+  // 每次请求 URL 都不同，任何缓存层都无从匹配，只能回源。
+  const q = new URLSearchParams({ ...BASE, _t: String(Date.now()), ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])) });
+  const r = await fetch(`${url}?${q}`, { credentials: 'include', cache: 'no-cache' });
   const j = await r.json();
   if (j.code !== 0) throw new Error(j.message || j.msg || `code ${j.code}`);
   return j.data as T;
