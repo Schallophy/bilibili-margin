@@ -253,6 +253,8 @@ export const POPS: Record<string, (o: { onDyn?: () => void; msgRemind?: () => bo
     enabled: o.msgRemind,
     load: async () => {
       const u = await unread();
+      // 面板刚拿到最新未读，顺手让顶栏「消息」角标对齐（不然读完消息角标还挂着旧数字）
+      dispatchEvent(new CustomEvent('margin:unread'));
       // margin-fresh=1：消息页加载后自刷新一次，规避第一次加载拿到旧数据（用户实测 F5 必新）
       const M = 'https://message.bilibili.com/?margin-fresh=1#/';
       return [

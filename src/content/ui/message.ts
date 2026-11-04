@@ -161,6 +161,8 @@ export class MessageApp {
     if (!u) return;
     const n: Record<View, number> = { whisper: u.chat, reply: u.reply, at: u.at, like: u.like, system: u.system };
     this.nav.querySelectorAll<HTMLElement>('.ms-item').forEach((b) => { const v = b.dataset.view as View; const c = v === this.view && v !== 'whisper' ? 0 : n[v]; b.querySelector('.ms-n')!.textContent = c ? (c > 99 ? '99+' : String(c)) : ''; });
+    // 顶栏角标同步：进页面拿到最新未读后，让顶栏「消息」角标也跟着对齐
+    dispatchEvent(new CustomEvent('margin:unread'));
   }
 
   /** 左侧分类的未读数（v0.46：点开后立刻清掉 / 减掉，顶栏消息角标跟着刷新，不用等刷新页面） */
