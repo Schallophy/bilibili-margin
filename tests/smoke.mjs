@@ -350,7 +350,7 @@ for (const theme of THEMES) {
     });
 
     await feature('refresh-keeps-scroll', async () => {
-      // #39：滚到下面点「换一批」，列表重建后不该被拽回顶部
+      // #39：滚到下面点「换一批」，新一批就绪前旧卡片要留在原位，换完从视频区顶部重新开始
       await reset();
       await seed({ filters: filterOff });
       await page.goto(HOME, { waitUntil: 'domcontentloaded' });
@@ -362,11 +362,61 @@ for (const theme of THEMES) {
         return app.scrollTop;
       });
       if (before < 300) return [`page too short to scroll: ${before}`];
-      await page.evaluate(() => document.getElementById('margin-root')?.shadowRoot?.querySelector('.ghost.refresh:not(.back)')?.click());
-      await page.waitForFunction(() => (document.getElementById('margin-root')?.shadowRoot?.querySelectorAll('.grid .card:not(.sk)').length ?? 0) >= 8, null, { timeout: 15_000 });
-      await sleep(500);
-      const after = await page.evaluate(() => document.getElementById('margin-root')?.shadowRoot?.querySelector('.app')?.scrollTop ?? 0);
-      return after > before * 0.5 ? [] : [`scroll jumped to top: ${before} -> ${after}`];
+      // 点击之后连续采样：旧实现会先清空网格（卡片数归零）并把 scrollTop 摔到顶部，再慢慢补回来
+      const sampled = await page.evaluate(() => new Promise((resolve) => {
+        const r = document.getElementById('margin-root').shadowRoot;
+        const app = r.querySelector('.app');
+        const btn = r.querySelector('.ghost.refresh:not(.back)');
+        let minTop = Infinity, minCards = Infinity;
+        const t = setInterval(() => {
+          minTop = Math.min(minTop, app.scrollTop);
+          minCards = Math.min(minCards, r.querySelectorAll('.grid .card:not(.sk)').length);
+        }, 16);
+        btn?.click();
+        setTimeout(() => { clearInterval(t); resolve({ minTop, minCards }); }, 1000);
+      }));
+      // 换完要直接落在视频区顶部（分类栏吸住、第一行卡片在栏下），不做长距离动画
+      const expected = await page.evaluate(() => {
+        const r = document.getElementById('margin-root').shadowRoot;
+        const app = r.querySelector('.app');
+        const bar = r.querySelector('.bar'), mark = r.querySelector('.bar-mark');
+        const markTop = mark.getBoundingClientRect().top - app.getBoundingClientRect().top + app.scrollTop;
+        return Math.max(0, markTop - (parseFloat(getComputedStyle(bar).top) || 0));
+      });
+      await page.waitForFunction((exp) => {
+        const app = document.getElementById('margin-root')?.shadowRoot?.querySelector('.app');
+        return !!app && Math.abs(app.scrollTop - exp) <= 2;
+      }, expected, { timeout: 4000 }).catch(() => {});
+      const after = await page.evaluate(() => {
+        const r = document.getElementById('margin-root').shadowRoot;
+        const app = r.querySelector('.app');
+        const bar = r.querySelector('.bar'), mark = r.querySelector('.bar-mark');
+        const card = r.querySelector('.grid .card:not(.sk)');
+        const markTop = mark.getBoundingClientRect().top - app.getBoundingClientRect().top + app.scrollTop;
+        const c = card?.getBoundingClientRect(), b = bar.getBoundingClientRect();
+        return {
+          top: app.scrollTop,
+          expected: Math.max(0, markTop - (parseFloat(getComputedStyle(bar).top) || 0)),
+          cards: r.querySelectorAll('.grid .card:not(.sk)').length,
+          firstBelowBar: !!c && !!b && c.top >= b.bottom - 2,
+          firstNearTop: !!c && c.top < innerHeight * 0.5,
+        };
+      });
+      // 落位后不能再被滚动锚定 / 吸顶切换来回拽
+      const stable = await page.evaluate(() => new Promise((resolve) => {
+        const app = document.getElementById('margin-root').shadowRoot.querySelector('.app');
+        let min = Infinity, max = -Infinity;
+        const t = setInterval(() => { min = Math.min(min, app.scrollTop); max = Math.max(max, app.scrollTop); }, 16);
+        setTimeout(() => { clearInterval(t); resolve({ min, max }); }, 600);
+      }));
+      const miss = [];
+      if (sampled.minCards < 8) miss.push(`grid emptied during refresh: min ${sampled.minCards} cards`);
+      if (sampled.minTop < expected - 8) miss.push(`scroll flashed above video top: ${before} -> ${sampled.minTop} (want ${expected})`);
+      if (Math.abs(after.top - after.expected) > 8) miss.push(`did not land on video top: ${after.expected} -> ${after.top}`);
+      if (stable.max - stable.min > 4) miss.push(`scroll bounced after landing: ${stable.min}..${stable.max}`);
+      if (!after.cards) miss.push('no cards after refresh');
+      if (!after.firstBelowBar || !after.firstNearTop) miss.push('first card is not at the top of the video area');
+      return miss;
     });
 
     await feature('extension-filters', async () => {

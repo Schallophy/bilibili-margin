@@ -575,5 +575,9 @@
 /* 上一批（v0.48） */
 .bar-acts { display: flex; align-items: center; gap: 8px; }
 .bar .refresh.back[hidden] { display: none; }
+/* 换一批进行中：按钮转圈，旧列表留在原位直到新一批就绪（减少动画时保持静止） */
+.bar .refresh[aria-busy="true"] { pointer-events: none; opacity: .7; }
+.bar .refresh[aria-busy="true"] svg { animation: refresh-spin .9s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
 .card:hover .coop, .card:focus-within .coop { opacity: 0; }
 .coop { transition: opacity 150ms var(--ease-out); }
