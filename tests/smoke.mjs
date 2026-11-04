@@ -419,6 +419,32 @@ for (const theme of THEMES) {
       return miss;
     });
 
+    await feature('refresh-at-page-top', async () => {
+      // 本来就在页面最顶部（还没滚到视频区）时，换一批应该原地刷新，不能往下跳到视频区顶部
+      await reset();
+      await seed({ filters: filterOff });
+      await page.goto(HOME, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => (document.getElementById('margin-root')?.shadowRoot?.querySelectorAll('.grid .card:not(.sk)').length ?? 0) >= 8, null, { timeout: 15_000 });
+      await page.evaluate(() => { const app = document.getElementById('margin-root').shadowRoot.querySelector('.app'); app.scrollTop = 0; });
+      await sleep(300);
+      const sampled = await page.evaluate(() => new Promise((resolve) => {
+        const r = document.getElementById('margin-root').shadowRoot;
+        const app = r.querySelector('.app');
+        const btn = r.querySelector('.ghost.refresh:not(.back)');
+        let maxTop = -Infinity, minCards = Infinity;
+        const t = setInterval(() => {
+          maxTop = Math.max(maxTop, app.scrollTop);
+          minCards = Math.min(minCards, r.querySelectorAll('.grid .card:not(.sk)').length);
+        }, 16);
+        btn?.click();
+        setTimeout(() => { clearInterval(t); resolve({ maxTop, minCards, top: app.scrollTop }); }, 1000);
+      }));
+      const miss = [];
+      if (sampled.minCards < 8) miss.push(`grid emptied during refresh: min ${sampled.minCards} cards`);
+      if (sampled.maxTop > 8 || sampled.top > 8) miss.push(`jumped down from page top: top ${sampled.top}, max ${sampled.maxTop}`);
+      return miss;
+    });
+
     await feature('extension-filters', async () => {
       await reset();
       await seed({ filters: { ...filterOff, keywords: ['芯片'] } });

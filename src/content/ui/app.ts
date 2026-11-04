@@ -403,12 +403,15 @@ export class MarginApp {
     void this.swapFeed(gen, prev);
   }
 
-  /** 换一批：旧列表撑到新一批就绪，整块替换后回到视频区顶部，从新推荐的开头开始看 */
+  /** 换一批：旧列表撑到新一批就绪，整块替换后回到视频区顶部；本来就在页面顶部时原地刷新，不往下跳 */
   private async swapFeed(gen: number, prev: { snap: Snap | null; page: number; round: number; appIdx: number; done: boolean }): Promise<void> {
     const fresh = { items: [] as Video[], seen: new Set<string>() };
     const frag = document.createDocumentFragment();
-    // 新列表太短时滚不到视频区顶部（scrollTop 会被夹住、反而露出顶部区块），先按视口估个卡数拉够
-    const need = this.cardsToFillViewport();
+    const target = this.videoTop();
+    // 已经停在视频区顶部以上（含页面最顶部）就不动，只有往下翻过才拉回来
+    const stay = this.app.scrollTop <= target;
+    // 往下翻过时，新列表太短会滚不到视频区顶部（scrollTop 被夹住、反而露出顶部区块），先按视口估个卡数拉够
+    const need = stay ? 0 : this.cardsToFillViewport();
     let got = 0;
     this.loading = true;
     this.refreshBusy(true);
@@ -434,8 +437,8 @@ export class MarginApp {
       // 整块换掉时不做入场动画：否则新卡片会从透明淡入，看起来又像整页闪了一下
       this.grid.querySelectorAll('.card').forEach((n) => n.classList.add('still'));
       if (this.done) this.status.replaceChildren(h('span', {}, '没有更多了'));
-      // 直接落到视频区顶部，不做长距离平滑滚动（会一路划过顶部区块、看起来像来回滑好几次）
-      this.app.scrollTop = this.videoTop();
+      // 翻过视频区才拉回顶部；本来就在顶部就原地不动。不做长距离平滑滚动，避免一路划过顶部区块
+      if (!stay) this.app.scrollTop = target;
       this.anchorTimer = window.setTimeout(() => { this.app.style.overflowAnchor = ''; }, 300);
     } catch (err) {
       if (gen !== this.gen) return;
