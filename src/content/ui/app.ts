@@ -417,8 +417,9 @@ export class MarginApp {
     const target = this.videoTop();
     // 已经停在视频区顶部以上（含页面最顶部）就不动，只有往下翻过才拉回来
     const stay = this.app.scrollTop <= target;
-    // 往下翻过时，新列表太短会滚不到视频区顶部（scrollTop 被夹住、反而露出顶部区块），先按视口估个卡数拉够
-    const need = stay ? 0 : this.cardsToFillViewport();
+    // 新列表比旧列表短时 scrollTop 会被夹上去、露出顶部区块：先按目标位置估个卡数，在旧列表还看得见时拉够
+    const want = stay ? this.app.scrollTop : target;
+    const need = want > 0 ? this.cardsToCover(want) : 0;
     let got = 0;
     this.loading = true;
     this.refreshBusy(true);
@@ -446,7 +447,8 @@ export class MarginApp {
       if (this.done) this.status.replaceChildren(h('span', {}, '没有更多了'));
       // 翻过视频区才拉回顶部；本来就在顶部就原地不动。不做长距离平滑滚动，避免一路划过顶部区块
       if (!stay) this.app.scrollTop = target;
-      this.anchorTimer = window.setTimeout(() => { this.app.style.overflowAnchor = ''; }, 300);
+      // 吸顶栏收起动画约 0.4s，锚定要多关一会儿，别在动画尾巴上再补偿一次
+      this.anchorTimer = window.setTimeout(() => { this.app.style.overflowAnchor = ''; }, 600);
     } catch (err) {
       if (gen !== this.gen) return;
       // 失败时旧列表原样保留，游标和「上一批」也退回去，不影响继续浏览
@@ -460,16 +462,16 @@ export class MarginApp {
     if (gen === this.gen) requestAnimationFrame(() => this.fillIfShort());
   }
 
-  /** 落回视频区顶部至少需要多少张卡：按旧网格的行高和当前视口估算，宁可多一行 */
-  private cardsToFillViewport(): number {
+  /** 换完后要让 scrollTop = want 仍然站得住，至少需要多少张卡（按旧网格行高估算，宁可多一行） */
+  private cardsToCover(want: number): number {
     const cols = getComputedStyle(this.grid).gridTemplateColumns.split(' ').filter(Boolean).length || 1;
     const cards = this.grid.querySelectorAll('.card:not(.sk)').length;
     const rows = Math.max(1, Math.ceil(cards / cols));
     const rowH = Math.max(160, this.grid.getBoundingClientRect().height / rows);
-    const zoom = Number(getComputedStyle(this.app).getPropertyValue('--margin-zoom')) || 1;
-    const sticky = this.barEl ? (parseFloat(getComputedStyle(this.barEl).top) || 0) * zoom : 0;
-    const needH = Math.max(0, this.app.clientHeight - sticky - 120);
-    return (Math.ceil(needH / rowH) + 1) * cols;
+    const appTop = this.app.getBoundingClientRect().top;
+    const gridTop = this.grid.getBoundingClientRect().top - appTop + this.app.scrollTop;
+    const wantH = Math.max(0, want + this.app.clientHeight - gridTop);
+    return (Math.ceil(wantH / rowH) + 1) * cols;
   }
 
   /** 视频区顶部：分类栏滚到吸顶位置，第一行卡片正好从栏下开始。
@@ -482,7 +484,11 @@ export class MarginApp {
     const sticky = (parseFloat(getComputedStyle(bar).top) || 0) * zoom;
     const appTop = this.app.getBoundingClientRect().top;
     const flowTop = (el: Element) => el.getBoundingClientRect().top - appTop + this.app.scrollTop;
-    return Math.max(0, Math.min(flowTop(mark), flowTop(this.grid)) - sticky);
+    const markTop = flowTop(mark), gridTop = flowTop(this.grid);
+    if (markTop > gridTop) return Math.max(0, gridTop - sticky);
+    // 分类栏在视频区前面：多滚 4px 落在「已经吸住」的一侧。
+    // 正好卡在吸顶临界点时，落位后分类栏还会展开/收起一次，把卡片上下顶一下。
+    return Math.max(0, markTop - sticky + 4);
   }
 
   private refreshBusy(on: boolean): void {

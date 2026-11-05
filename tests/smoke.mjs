@@ -940,7 +940,8 @@ for (const theme of THEMES) {
         const app = r.querySelector('.app');
         const bar = r.querySelector('.bar'), mark = r.querySelector('.bar-mark');
         const markTop = mark.getBoundingClientRect().top - app.getBoundingClientRect().top + app.scrollTop;
-        return Math.max(0, markTop - (parseFloat(getComputedStyle(bar).top) || 0));
+        // +4：落在吸顶那一侧，避开分类栏展开/收起的临界点
+        return Math.max(0, markTop - (parseFloat(getComputedStyle(bar).top) || 0) + 4);
       });
       await page.waitForFunction((exp) => {
         const app = document.getElementById('margin-root')?.shadowRoot?.querySelector('.app');
@@ -955,9 +956,9 @@ for (const theme of THEMES) {
         const c = card?.getBoundingClientRect(), b = bar.getBoundingClientRect();
         return {
           top: app.scrollTop,
-          expected: Math.max(0, markTop - (parseFloat(getComputedStyle(bar).top) || 0)),
+          expected: Math.max(0, markTop - (parseFloat(getComputedStyle(bar).top) || 0) + 4),
           cards: r.querySelectorAll('.grid .card:not(.sk)').length,
-          firstBelowBar: !!c && !!b && c.top >= b.bottom - 2,
+          firstBelowBar: !!c && !!b && c.top >= b.bottom - 8,
           firstNearTop: !!c && c.top < innerHeight * 0.5,
         };
       });
@@ -1002,6 +1003,52 @@ for (const theme of THEMES) {
       if (sampled.minCards < 8) miss.push(`grid emptied during refresh: min ${sampled.minCards} cards`);
       if (sampled.maxTop > 8 || sampled.top > 8) miss.push(`jumped down from page top: top ${sampled.top}, max ${sampled.maxTop}`);
       return miss;
+    });
+
+    await feature('refresh-at-video-top', async () => {
+      // 临界点（视频区顶部、日期行可见）：新一批不够高时 scrollTop 不能被夹上去、把顶部区块露出来
+      await reset();
+      await seed({ filters: filterOff });
+      let i = 0;
+      await page.route(/feed\/rcmd/, async (route) => {
+        const items = Array.from({ length: 3 }, (_, k) => {
+          const id = i * 3 + k;
+          return { goto: 'av', bvid: 'BVsmoke' + String(id).padStart(8, '0'), cid: 2000 + id, title: `临界卡 ${id}`, pic: '', duration: 600, pubdate: 1760000000 + id, owner: { name: '映间编辑部', mid: 1, face: '' }, stat: { view: 10000, danmaku: 100 } };
+        });
+        i++;
+        const origin = route.request().headers().origin || 'https://www.bilibili.com';
+        await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' }, body: JSON.stringify({ code: 0, data: { item: items } }) });
+      });
+      try {
+        await page.goto(HOME, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => (document.getElementById('margin-root')?.shadowRoot?.querySelectorAll('.grid .card:not(.sk)').length ?? 0) >= 8, null, { timeout: 15_000 });
+        await sleep(500);
+        const target = await page.evaluate(() => {
+          const r = document.getElementById('margin-root').shadowRoot;
+          const app = r.querySelector('.app'), bar = r.querySelector('.bar'), mark = r.querySelector('.bar-mark');
+          const markTop = mark.getBoundingClientRect().top - app.getBoundingClientRect().top + app.scrollTop;
+          app.scrollTop = Math.max(0, markTop - (parseFloat(getComputedStyle(bar).top) || 0) + 4);
+          return app.scrollTop;
+        });
+        await sleep(400);
+        const before = await page.evaluate(() => {
+          const r = document.getElementById('margin-root').shadowRoot, app = r.querySelector('.app'), dash = r.querySelector('.dash');
+          return { top: app.scrollTop, dashBottom: dash ? dash.getBoundingClientRect().bottom - app.getBoundingClientRect().top : 0 };
+        });
+        await page.evaluate(() => document.getElementById('margin-root').shadowRoot.querySelector('.ghost.refresh:not(.back)')?.click());
+        await sleep(1200);
+        const after = await page.evaluate(() => {
+          const r = document.getElementById('margin-root').shadowRoot, app = r.querySelector('.app'), dash = r.querySelector('.dash');
+          return { top: app.scrollTop, dashBottom: dash ? dash.getBoundingClientRect().bottom - app.getBoundingClientRect().top : 0, cards: r.querySelectorAll('.grid .card:not(.sk)').length };
+        });
+        const miss = [];
+        if (Math.abs(after.top - target) > 4) miss.push(`scroll clamped at video top: ${target.toFixed(1)} -> ${after.top}`);
+        if (before.dashBottom <= 73 && after.dashBottom > 73) miss.push(`top blocks revealed: dash bottom ${after.dashBottom}`);
+        if (after.cards < 8) miss.push(`too few cards after refresh: ${after.cards}`);
+        return miss;
+      } finally {
+        await page.unroute(/feed\/rcmd/);
+      }
     });
 
     await feature('extension-filters', async () => {
