@@ -1,3 +1,5 @@
+import { BATCH_DEFAULT, clampBatchSize } from './batch';
+
 export type Theme = 'auto' | 'light' | 'dark';
 /** 只保留经典配色（雾蓝 / 夜蓝已按用户要求移除） */
 export type Palette = 'classic';
@@ -69,6 +71,12 @@ export interface Settings {
   cols: 0 | 4 | 5 | 6;
   /** 点击「推荐 / 热门 / 关注老片」分类标签刷新列表 */
   tabRefresh: boolean;
+  /** 推荐批次导航：每次「换一批」只加载一页，按每批视频数切窗，底部左右箭头翻批 */
+  batchNav: boolean;
+  /** 每批视频数 */
+  batchSize: number;
+  /** 批次条中间的刷新按钮；关闭后只剩左右箭头 */
+  batchRefresh: boolean;
   /** 首页隐藏的部件；空 = 全部显示 */
   homeHide: HomeBit[];
   /** 标题字体（v0.46，B 站评论建议）：衬线 = 宋体系，无衬线 = 黑体系 */
@@ -148,6 +156,9 @@ export const DEFAULTS: Settings = {
   replyTree: true,
   cols: 0,
   tabRefresh: false,
+  batchNav: false,
+  batchSize: BATCH_DEFAULT,
+  batchRefresh: true,
   homeHide: [],
   titleFont: 'serif',
   monoNum: true,
@@ -210,6 +221,9 @@ function merge(raw: Partial<Settings> | undefined): Settings {
     headOrder: strList(r.headOrder),
     zoom: r.zoom === 110 || r.zoom === 120 ? r.zoom : 100,
     tabRefresh: r.tabRefresh === true,
+    batchNav: r.batchNav === true,
+    batchSize: clampBatchSize(r.batchSize),
+    batchRefresh: r.batchRefresh !== false,
     cmdK: r.cmdK !== false,
     cdn: cleanHost(r.cdn),
     bodyFont: cleanFont(r.bodyFont),
@@ -272,6 +286,9 @@ export function sanitizeSettings(raw: unknown): Settings | null {
   if (r.zoom === 100 || r.zoom === 110 || r.zoom === 120) out.zoom = r.zoom;
   if (r.titleFont === 'serif' || r.titleFont === 'sans') out.titleFont = r.titleFont;
   if (r.cols === 0 || r.cols === 4 || r.cols === 5 || r.cols === 6) out.cols = r.cols;
+  if (typeof r.batchNav === 'boolean') out.batchNav = r.batchNav;
+  if (typeof r.batchRefresh === 'boolean') out.batchRefresh = r.batchRefresh;
+  if (typeof r.batchSize === 'number') out.batchSize = clampBatchSize(r.batchSize);
   if (Array.isArray(r.homeHide)) out.homeHide = HOME_BITS.filter((b) => (r.homeHide as unknown[]).includes(b));
   if (Array.isArray(r.homeOrder)) out.homeOrder = normalizeHomeOrder(r.homeOrder);
   if (r.theme === 'auto' || r.theme === 'light' || r.theme === 'dark') out.theme = r.theme;
