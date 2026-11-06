@@ -17,6 +17,7 @@ import { setUserReducedMotion } from './motion';
 import { startNativeFilter } from './native-filter';
 import { installAppNavigation } from './navigation';
 import { setSponsorSkip } from './sponsor-skip';
+import { setDanmakuAirborne } from './danmaku-airborne';
 import { applyAppearance } from './appearance';
 
 // Firefox：内容脚本自带的 fetch 以扩展身份发请求，B 站接口收不到登录 cookie（一直显示未登录）。
@@ -75,6 +76,8 @@ function applyGlobalUi(s: Settings): void {
       if (generation === jumpsGeneration) module.setDanmakuJump(true);
     }).catch(error => console.error('[MARGIN] 弹幕建议加载失败', error));
   }
+  setDanmakuAirborne(active && s.danmakuAirborne);
+  document.documentElement.classList.toggle('margin-airborne', active && s.danmakuAirborne);
   document.documentElement.classList.toggle('margin-ads-hide', s.enabled && s.hideAds);
   setUserReducedMotion(s.enabled && s.reduceMotion);
 }

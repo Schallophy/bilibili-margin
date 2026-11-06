@@ -98,6 +98,8 @@ export interface Settings {
   sponsorSkip: boolean;
   /** 弹幕中的空降时间建议，默认关闭；用户点击后跳转，可撤销 */
   danmakuJump: boolean;
+  /** 弹幕空降（v0.53，默认关闭）：认得出时间点的弹幕加下划线，点一下跳到那个时间；只在本机解析，不联网 */
+  danmakuAirborne: boolean;
   /** 顶栏消息未读轮询与消息角标（v0.47）；动态角标不受影响 */
   msgRemind: boolean;
   /** 首页板块顺序（v0.47） */
@@ -163,6 +165,7 @@ export const DEFAULTS: Settings = {
   hideAds: true,
   sponsorSkip: false,
   danmakuJump: false,
+  danmakuAirborne: false,
   msgRemind: true,
   homeOrder: [...HOME_SECTIONS],
   appFeed: false,
@@ -219,6 +222,7 @@ function merge(raw: Partial<Settings> | undefined): Settings {
     hideAds: r.hideAds !== false,
     sponsorSkip: r.sponsorSkip === true,
     danmakuJump: r.danmakuJump === true,
+    danmakuAirborne: r.danmakuAirborne === true,
     msgRemind: r.msgRemind !== false,
     homeOrder: normalizeHomeOrder(r.homeOrder),
     appFeed: r.appFeed === true,
@@ -258,8 +262,9 @@ export function sanitizeSettings(raw: unknown): Settings | null {
   if (r.accent === 'classic' || r.accent === 'blue' || r.accent === 'pink') out.accent = r.accent;
   if (r.glass === 'soft' || r.glass === 'liquid') out.glass = r.glass;
   if (r.favColumns === 2 || r.favColumns === 3 || r.favColumns === 4) out.favColumns = r.favColumns;
-  const bool = (k: 'enabled' | 'hoverPreview' | 'watch' | 'intro' | 'footprint' | 'weather' | 'favDirect' | 'autoWeb' | 'webScroll' | 'speedKeys' | 'replyTree' | 'idDrag' | 'monoNum' | 'reduceMotion' | 'wide' | 'hideAds' | 'sponsorSkip' | 'danmakuJump' | 'msgRemind' | 'appFeed' | 'rerank' | 'headHover' | 'tabRefresh') => { if (typeof r[k] === 'boolean') out[k] = r[k] as boolean; };
+  const bool = (k: 'enabled' | 'hoverPreview' | 'watch' | 'intro' | 'footprint' | 'weather' | 'favDirect' | 'autoWeb' | 'webScroll' | 'speedKeys' | 'replyTree' | 'idDrag' | 'monoNum' | 'reduceMotion' | 'wide' | 'hideAds' | 'sponsorSkip' | 'danmakuJump' | 'danmakuAirborne' | 'msgRemind' | 'appFeed' | 'rerank' | 'headHover' | 'tabRefresh') => { if (typeof r[k] === 'boolean') out[k] = r[k] as boolean; };
   bool('sponsorSkip'); bool('danmakuJump');
+  bool('danmakuAirborne');
   bool('enabled'); bool('hoverPreview'); bool('watch'); bool('intro'); bool('footprint'); bool('weather'); bool('favDirect'); bool('autoWeb'); bool('webScroll'); bool('speedKeys'); bool('replyTree'); bool('idDrag'); bool('monoNum');
   bool('reduceMotion'); bool('wide'); bool('hideAds'); bool('msgRemind'); bool('appFeed'); bool('rerank'); bool('headHover'); bool('tabRefresh');
   if (r.radius === 0 || r.radius === 50 || r.radius === 100 || r.radius === 150) out.radius = r.radius;

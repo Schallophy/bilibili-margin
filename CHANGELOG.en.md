@@ -24,6 +24,7 @@
 - Fix automatic web fullscreen being skipped when the native player starts in wide mode. Cover normal, wide, mini and fullscreen states, including manual exit behavior.
 - Focus the image viewer's close button on opening, cycle Tab within the viewer and restore focus to the originating image on closing. Cancel pending opening animation after closing and preserve existing page scroll styles.
 - Show server or network errors and stop polling when App QR authorization fails. Ignore earlier QR status responses after retrying, avoiding misleading expiry messages. Add regressions for theme writes, overlays, automatic player modes, the image viewer and authorization.
+- Add "Danmaku airborne": on the watch page, danmaku that mention a time (such as "03:20" or "jump to 2:15") get an underline, and one click seeks to that moment. Parsed entirely on the device with no network requests and no new permissions.
 
 - Fix square corners on the black video loading surface. Apply the existing clipping before the native player sets its screen mode, covering radius settings, wide mode, mini player and fullscreen.
 - Mount the watch-page card as soon as native hydration finishes, removing the previous polling delay of up to about 1.5 seconds. Coalesce startup observation by animation frame and bound its lifetime, with periodic checks covering late nodes.

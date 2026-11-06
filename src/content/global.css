@@ -49,3 +49,14 @@ html.margin-skin.margin-reduce *:not(:is(.bpx-player-container, #bilibili-player
     scroll-behavior: auto !important;
   }
 }
+
+/* 弹幕空降：认得出时间点的弹幕加下划线，点一下跳到那个时间（解析在 danmaku-time.ts） */
+/* 弹幕层整体不吃指针事件，这里只把标记过的那几条收回来，没标记的照样穿透给播放器 */
+html.margin-airborne .margin-dm-air,
+html.margin-airborne .margin-dm-air > div,
+html.margin-airborne .margin-dm-air > span {
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  pointer-events: auto;
+}

@@ -222,6 +222,7 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
   const adsT = toggle(s0.hideAds, '隐藏广告', (v) => save({ hideAds: v }));
   const sponsorT = toggle(s0.sponsorSkip, '跳过视频内广告', (v) => save({ sponsorSkip: v }));
   const jumpT = toggle(s0.danmakuJump, '弹幕跳转建议', (v) => save({ danmakuJump: v }));
+  const airT = toggle(s0.danmakuAirborne, '弹幕空降', (v) => save({ danmakuAirborne: v }));
 
   const mode = segmented<BgMode>([['random', '随机'], ['fixed', '固定'], ['image', '图片'], ['off', '关闭']], s0.bg.mode, (v) => {
     if (v === 'image') { file.click(); return; }
@@ -445,6 +446,7 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
       row('网页全屏时可滚动', '网页全屏下往下滚就能看评论，播放器跟着滚走', webS),
       row('倍速快捷键', 'X 减速、C 加速（每次 0.1×），Z 在当前倍速和 1× 之间切换', spdK),
       row('楼中楼对话树', '展开的楼中楼按「谁回复谁」缩进排列，用细线连起来，最多缩进三层', treeT),
+      row('弹幕空降', h('span', {}, '认得出时间点的弹幕加下划线，点一下跳到那个时间；只在本机解析，不联网。默认关闭'), airT),
       drawer('视频 CDN 节点', () => CDNS.find(([x]) => x === get().cdn)?.[1] ?? 'B 站默认',
         h('p', { class: 'sd-note' }, '卡顿或加载慢时换一个节点试试；测的是连接延迟，数字越小越好。新打开的视频生效'), cdnList, h('div', { class: 'hl-foot' }, cdnTest))),
     h('section', { class: 'group' }, h('h3', {}, '通知'),
@@ -502,6 +504,7 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
       rankT.setAttribute('aria-checked', String(s.rerank));
       sponsorT.setAttribute('aria-checked', String(s.sponsorSkip));
       jumpT.setAttribute('aria-checked', String(s.danmakuJump));
+      airT.setAttribute('aria-checked', String(s.danmakuAirborne));
       watch.setAttribute('aria-checked', String(s.watch));
       foot.setAttribute('aria-checked', String(s.footprint));
       wxT.setAttribute('aria-checked', String(s.weather));

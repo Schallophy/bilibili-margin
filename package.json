@@ -13,6 +13,7 @@
     "test:app-window": "node tests/app-window.mjs",
     "test:sponsor-skip": "node tests/sponsor-skip.mjs",
     "test:danmaku-jump": "node tests/danmaku-jump.mjs",
+    "test:danmaku-airborne": "node tests/danmaku-airborne.mjs",
     "test:frame-budget": "node tests/frame-budget.mjs",
     "test:performance-ui": "node tests/performance-ui.mjs",
     "test:message-media": "node tests/message-media.mjs",

@@ -73,6 +73,7 @@ Other Chromium browsers (Brave, Opera, Vivaldi, Arc and others) can follow the C
 | --- | --- |
 | Home and search | Personalized recommendations, popular videos, infinite scrolling, refresh, and filters for keywords, uploaders, view counts and duration. |
 | Native playback | Redesigned titles, uploader cards, episode lists and recommendations, while retaining the native player, danmaku, comments, quality and fullscreen controls. |
+| Danmaku airborne | Optional, off by default: danmaku that mention a time (such as "03:20" or "jump to 2:15") get an underline, and one click seeks to that time. Parsed entirely on your device, with no network requests. |
 | Favorites and watch later | Glass folder cards, watch-later lists, viewing progress and video context menus. |
 | Activity | Year and month heatmaps, first opening time and daily usage, viewing-history backfill and data-source labels. |
 | Reading and account pages | Reading layouts for posts, opus articles and columns, plus matching interfaces for spaces, history, feeds and messages; private chats support image preview/sending and native Bilibili emoji selection. |
