@@ -71,6 +71,8 @@ jobs:
         run: |
           SMOKE_OUT=smoke-artifacts/dynamic-replies node tests/dynamic-replies.mjs
           SMOKE_OUT=smoke-artifacts/live-rank-theme node tests/live-rank-theme.mjs
+      - name: Recommendation batch navigation
+        run: SMOKE_OUT=smoke-artifacts/feed-batches node tests/feed-batches.mjs
       - name: Native share button sizing
         run: npm run test:watch-share
         env:
