@@ -446,7 +446,7 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
       row('网页全屏时可滚动', '网页全屏下往下滚就能看评论，播放器跟着滚走', webS),
       row('倍速快捷键', 'X 减速、C 加速（每次 0.1×），Z 在当前倍速和 1× 之间切换', spdK),
       row('楼中楼对话树', '展开的楼中楼按「谁回复谁」缩进排列，用细线连起来，最多缩进三层', treeT),
-      row('弹幕空降', h('span', {}, '认得出时间点的弹幕加下划线，点一下跳到那个时间；只在本机解析，不联网。默认关闭'), airT),
+      row('弹幕空降', h('span', {}, '认得出时间点的弹幕加下划线，点一下跳到那个时间；只在本机解析，不联网。默认开启，不喜欢可以关掉'), airT),
       drawer('视频 CDN 节点', () => CDNS.find(([x]) => x === get().cdn)?.[1] ?? 'B 站默认',
         h('p', { class: 'sd-note' }, '卡顿或加载慢时换一个节点试试；测的是连接延迟，数字越小越好。新打开的视频生效'), cdnList, h('div', { class: 'hl-foot' }, cdnTest))),
     h('section', { class: 'group' }, h('h3', {}, '通知'),

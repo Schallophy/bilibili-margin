@@ -39,7 +39,10 @@ try {
     const current = (await chrome.storage.local.get('margin:settings'))['margin:settings'] ?? {};
     await chrome.storage.local.set({ 'margin:settings': { ...current, ...p } });
   }, patch);
-  await settings({ bg: { mode: 'off' }, intro: false, danmakuAirborne: true });
+  // 不写 danmakuAirborne：新装默认就该是开着的，这里顺带当成默认值回归。
+  await settings({ bg: { mode: 'off' }, intro: false });
+  const stored = await sw.evaluate(async () => (await chrome.storage.local.get('margin:settings'))['margin:settings'] ?? {});
+  assert.equal(stored.danmakuAirborne, undefined, '测试前置不该预写这个开关');
   await page.goto(watch, { waitUntil: 'domcontentloaded' });
   await page.locator('#margin-watch-top header.top').waitFor();
   await page.evaluate(async () => {
@@ -78,7 +81,7 @@ try {
   assert.equal(style.airEvents, 'auto');
   assert.equal(style.laughDeco, 'none');
   assert.equal(style.laughEvents, 'none');
-  console.log('PASS only the danmaku whose text parses as a time gets margin-dm-air + underline + pointer events');
+  console.log('PASS default on: with no stored switch, only the danmaku whose text parses as a time gets margin-dm-air + underline + pointer events');
 
   // 真实鼠标点击标记过的弹幕：document 捕获阶段的监听把点击落到 video.currentTime 上。
   await page.locator('#dm-air span').click();
