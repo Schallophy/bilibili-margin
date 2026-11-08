@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   loadSettings, saveSettings, sanitizeSettings, normalizeHomeOrder,
-  cleanFont, cleanHost, DEFAULTS,
+  cleanFont, cleanHost, DEFAULTS, clampPaletteSpeed,
 } from '../../src/shared/settings';
 
 /** chrome.storage.local 的最小模拟：loadSettings / saveSettings 只用到 get(KEY) / set */
@@ -65,6 +65,20 @@ describe('settings 迁移（merge / loadSettings）', () => {
     expect(sanitizeSettings({ batchNav: true })?.batchNav).toBe(true);
     expect(sanitizeSettings({ batchSize: 1 })?.batchSize).toBe(1);
     expect(sanitizeSettings({ batchSize: 999 })?.batchSize).toBe(100);
+  });
+
+  it('面板动画速度默认 100%，范围收敛到 50–200', async () => {
+    expect(DEFAULTS.paletteSpeed).toBe(100);
+    expect(clampPaletteSpeed(200)).toBe(200);
+    expect(clampPaletteSpeed(10)).toBe(50);
+    expect(clampPaletteSpeed(999)).toBe(200);
+    expect(clampPaletteSpeed(NaN)).toBe(100);
+    expect(clampPaletteSpeed('150')).toBe(100);
+    expect(sanitizeSettings({ paletteSpeed: 200 })?.paletteSpeed).toBe(200);
+    expect(sanitizeSettings({ paletteSpeed: 10 })?.paletteSpeed).toBe(50);
+    expect(sanitizeSettings({ paletteSpeed: '150' })?.paletteSpeed).toBe(100);
+    store.set('margin:settings', { paletteSpeed: 1 });
+    expect((await loadSettings()).paletteSpeed).toBe(50);
   });
 
   it('撤回的播放页评论布局选项不再导入或作为默认设置', () => {

@@ -92,12 +92,12 @@ export class WatchSkin {
       { id: 'later', title: '稍后再看', cat: '跳转', icon: ICONS.later, keys: ['watchlater'], run: () => later.open() },
       { id: 'history', title: '观看历史', cat: '跳转', icon: ICONS.history, run: () => open('https://www.bilibili.com/history') },
       { id: 'off', title: '本次回到 B 站原版', cat: '操作', icon: ICONS.exit, keys: ['原版'], run: () => { sessionStorage.setItem('margin:off', '1'); location.reload(); } },
-    ]);
+    ], (on) => this.bg.hold('palette', on));
     const cm = createContextMenu();
     this.head = createHeader({
       onTheme: () => this.toggleTheme(),
       onSettings: () => this.panel.sheet.open(),
-      onSearch: (q) => palette.open(q),
+      onSearch: (q, origin) => palette.open(q, origin),
       msgRemind: () => this.settings.msgRemind,
       filter: this.filter,
       tabs: [

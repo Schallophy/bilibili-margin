@@ -102,6 +102,8 @@ export interface Settings {
   reduceMotion: boolean;
   /** 控件动画；独立于背景和天气的动态效果 */
   uiEffects: boolean;
+  /** 搜索框展开成命令面板的动画速度（%）：50–200，100 = 默认 */
+  paletteSpeed: number;
   /** 有 B 站播放器时自动进入宽屏（v0.47），番剧、列表等页面同样生效 */
   wide: boolean;
   /** 隐藏广告与推广（v0.47），默认开启；只做展示层过滤 */
@@ -178,6 +180,7 @@ export const DEFAULTS: Settings = {
   idDrag: false,
   reduceMotion: false,
   uiEffects: true,
+  paletteSpeed: 100,
   wide: false,
   hideAds: true,
   sponsorSkip: false,
@@ -197,6 +200,11 @@ export const DEFAULTS: Settings = {
 /** 字体名只留字母、数字、中日韩文字、空格和 - _ .，最长 64 个字：会拼进 CSS font-family，不能带引号分号 */
 export function cleanFont(v: unknown): string {
   return typeof v === 'string' ? v.replace(/[^\p{L}\p{N} ._-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 64) : '';
+}
+
+/** 命令面板动画速度（%）限定在 50–200，超出范围或不是数字时回默认 100 */
+export function clampPaletteSpeed(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(200, Math.max(50, Math.round(v))) : 100;
 }
 
 /** 只接受 bilivideo / akamaized / hdslb 的主机名，防止把视频流导到别处 */
@@ -240,6 +248,7 @@ function merge(raw: Partial<Settings> | undefined): Settings {
     idDrag: r.idDrag === true,
     reduceMotion: r.reduceMotion === true,
     uiEffects: r.uiEffects !== false,
+    paletteSpeed: clampPaletteSpeed(r.paletteSpeed),
     wide: r.wide === true,
     hideAds: r.hideAds !== false,
     sponsorSkip: r.sponsorSkip === true,
@@ -304,6 +313,7 @@ export function sanitizeSettings(raw: unknown): Settings | null {
   if (typeof r.batchRefresh === 'boolean') out.batchRefresh = r.batchRefresh;
   if (typeof r.batchPrefetch === 'boolean') out.batchPrefetch = r.batchPrefetch;
   if (typeof r.batchSize === 'number') out.batchSize = clampBatchSize(r.batchSize);
+  if (typeof r.paletteSpeed === 'number') out.paletteSpeed = clampPaletteSpeed(r.paletteSpeed);
   if (Array.isArray(r.homeHide)) out.homeHide = HOME_BITS.filter((b) => (r.homeHide as unknown[]).includes(b));
   if (Array.isArray(r.homeOrder)) out.homeOrder = normalizeHomeOrder(r.homeOrder);
   if (r.theme === 'auto' || r.theme === 'light' || r.theme === 'dark') out.theme = r.theme;

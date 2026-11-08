@@ -196,6 +196,59 @@ for (const theme of THEMES) {
       await page.screenshot({path:join(OUT,'home-classic.png')});return miss;
     });
 
+    await feature('search-morph', async () => {
+      await reset(); await seed({ intro: false, homeHide: ['search'], bg: { mode: 'off' } });
+      await page.goto(HOME, { waitUntil: 'domcontentloaded' });
+      const box = page.locator('#margin-root .top .search');
+      await box.waitFor();
+      const miss = [];
+      const before = await box.boundingBox();
+      if (!before) return ['header search has no bounds'];
+      const cp = page.locator('#margin-root .cp');
+      await box.click();
+      const immediate = await box.evaluate((e) => getComputedStyle(e).opacity);
+      if (immediate !== '0') miss.push(`origin search box not hidden immediately after click: ${immediate}`);
+      if (!await cp.evaluate((e) => e.classList.contains('cp-clipping'))) miss.push('morph clipping not active after click');
+      await cp.waitFor();
+      await sleep(120);
+      if (await page.locator('#margin-root .cp-panel').evaluate((e) => getComputedStyle(e).opacity) !== '1') miss.push('panel content hidden during expansion');
+      const k = await cp.evaluate((e) => e.style.getPropertyValue('--cp-k'));
+      if (k !== '1') miss.push(`default speed factor should be 1, got ${k}`);
+      await sleep(700);
+      if (await cp.evaluate((e) => e.classList.contains('cp-clipping'))) miss.push('morph clipping left on after expansion');
+      const hidden = await box.evaluate((e) => getComputedStyle(e).opacity);
+      if (hidden !== '0') miss.push(`origin search box still visible after expansion: ${hidden}`);
+      const after = await page.locator('#margin-root .cp-panel').boundingBox();
+      if (!after) miss.push('panel has no bounds');
+      else if (after.width <= before.width || after.height < before.height * 3) miss.push(`panel did not expand from search box (${before.width}×${before.height} → ${after.width}×${after.height})`);
+      await page.screenshot({ path: join(OUT, 'search-morph.png') });
+      await page.keyboard.press('Escape');
+      await sleep(500);
+      if (await cp.isVisible()) miss.push('palette still visible after Esc');
+      if (await box.evaluate((e) => getComputedStyle(e).opacity) !== '1') miss.push('origin search box not restored after close');
+      // 速度设置：200% 表示动画时长减半（系数 0.5）
+      await seed({ paletteSpeed: 200 }); await sleep(200);
+      await box.click();
+      await cp.waitFor();
+      const fast = await cp.evaluate((e) => e.style.getPropertyValue('--cp-k'));
+      if (fast !== '0.5') miss.push(`paletteSpeed 200 should halve duration, got ${fast}`);
+      // 展开途中关闭：应从当前大小反向收回，而不是跳回全尺寸再淡出
+      await sleep(80);
+      await page.keyboard.press('Escape');
+      if (!await cp.evaluate((e) => e.classList.contains('cp-clipping'))) miss.push('closing during expansion skipped the reverse animation');
+      await sleep(400);
+      if (await cp.isVisible()) miss.push('palette still visible after interrupted close');
+      if (await box.evaluate((e) => getComputedStyle(e).opacity) !== '1') miss.push('origin not restored after interrupted close');
+      // 减少动画时直接显示面板，不再走形变外壳
+      await seed({ reduceMotion: true, paletteSpeed: 100 }); await sleep(300);
+      await box.click();
+      await cp.waitFor();
+      if (await cp.evaluate((e) => e.classList.contains('cp-clipping'))) miss.push('reduced motion still morphs');
+      await page.keyboard.press('Escape'); await sleep(300);
+      await seed({ reduceMotion: false });
+      return miss;
+    });
+
     await feature('appearance-settings',async () => {
       await reset();await page.goto(HOME,{waitUntil:'domcontentloaded'});await page.locator('#margin-root .hero-search').waitFor();await sleep(500);
       const miss=[];
@@ -203,6 +256,9 @@ for (const theme of THEMES) {
       if(await maps())miss.push('default soft mode generated refraction maps');
       await page.locator('#margin-root .top [aria-label="设置"]').click();
       const panel=page.locator('#margin-root .sheet[aria-label="设置"]');
+      const speed=panel.getByLabel('搜索框展开速度（%）');
+      if(await speed.count()!==1)miss.push('palette speed setting missing');
+      else { await speed.fill('999');await speed.press('Enter');if(await speed.inputValue()!=='200')miss.push(`palette speed not clamped: ${await speed.inputValue()}`);await speed.fill('100');await speed.press('Enter'); }
       await panel.getByRole('radio',{name:'哔哩蓝',exact:true}).click();
       await page.waitForFunction(()=>getComputedStyle(document.getElementById('margin-root').shadowRoot.querySelector('.upload')).backgroundColor==='rgb(0, 125, 168)');
       if(await page.locator('#margin-root .hs-btn').evaluate(e=>getComputedStyle(e).backgroundColor)!=='rgb(0, 125, 168)')miss.push('search CTA did not follow accent');

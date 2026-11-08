@@ -78,7 +78,7 @@ Other Chromium browsers (Brave, Opera, Vivaldi, Arc and others) can follow the C
 | Activity | Year and month heatmaps, first opening time and daily usage, viewing-history backfill and data-source labels. |
 | Reading and account pages | Reading layouts for posts, opus articles and columns, plus matching interfaces for spaces, history, feeds and messages; private chats support image preview/sending and native Bilibili emoji selection. |
 | Appearance | Light, dark and system themes; 13 animated backgrounds, custom images and intensity controls, including Gateway flow and click shockwaves. |
-| Shortcuts | Search suggestions, command palette, hover previews, a flippable profile card and an editable-city weather widget. |
+| Shortcuts | Search suggestions, a command palette that expands in place from the search box with adjustable speed, hover previews, a flippable profile card and an editable-city weather widget. |
 | Local data | Settings and activity records stored locally, with JSON import and export. |
 
 Some account features require a Bilibili login. Availability also depends on Bilibili's APIs, permissions and regional restrictions.

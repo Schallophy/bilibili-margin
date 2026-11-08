@@ -407,6 +407,7 @@
 .city-row { display: flex; gap: 8px; }
 .city-in { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--chip); color: var(--ink); font: inherit; font-size: 14px; box-shadow: var(--ring); outline: none; transition: box-shadow 150ms var(--ease-out); }
 .city-in:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.palette-speed-in { flex: none; width: 96px; }
 .city-auto { height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: var(--chip); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; box-shadow: var(--ring); }
 .city-auto:hover { color: var(--ink); }
 .city-list { list-style: none; margin: 0; padding: 4px; border-radius: 12px; background: var(--surface, var(--chip)); box-shadow: var(--ring), var(--sh-md); display: grid; gap: 2px; }

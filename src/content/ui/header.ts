@@ -40,7 +40,7 @@ export const SITE_LINKS: TabSpec[] = [
 ];
 
 /** 首页和播放页共用的顶栏：标志、搜索、Expandable Tabs、日月主题按钮、投稿、头像 */
-export function createHeader(o: { tabs: TabItem[]; onTheme: () => void; onSearch?: (q: string) => void; onSettings?: () => void; msgRemind?: () => boolean; filter?: FilterRuntime }): Header {
+export function createHeader(o: { tabs: TabItem[]; onTheme: () => void; onSearch?: (q: string, origin: HTMLElement) => void; onSettings?: () => void; msgRemind?: () => boolean; filter?: FilterRuntime }): Header {
   let msgOn = o.msgRemind?.() ?? true;
   const user = h('a', { class: 'user', href: 'https://passport.bilibili.com/login', target: '_blank', rel: 'noopener' }, '登录');
   const userSlot = h('div', { class: 'um-wrap' }, user);
@@ -58,13 +58,13 @@ export function createHeader(o: { tabs: TabItem[]; onTheme: () => void; onSearch
   if (o.onSearch) {
     // 顶栏搜索框只做入口：点一下、或开始打字，就交给命令面板
     input.readOnly = true;
-    const openP = () => { const q = input.value; input.value = ''; input.blur(); o.onSearch!(q); };
+    const openP = () => { const q = input.value; input.value = ''; input.blur(); o.onSearch!(q, search); };
     search.addEventListener('pointerdown', (e) => { e.preventDefault(); openP(); });
     input.addEventListener('focus', openP);
   }
 
   acceptTextDrop(search, (text) => {
-    if (o.onSearch) { o.onSearch(text); return; }
+    if (o.onSearch) { o.onSearch(text, search); return; }
     input.value = text;
     input.focus();
     input.dispatchEvent(new Event('input', { bubbles: true }));

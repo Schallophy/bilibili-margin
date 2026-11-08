@@ -1,5 +1,5 @@
 import type { BgMode, HomeBit, HomeSection, Settings, ShaderId, Theme } from '../../shared/settings';
-import { BG_IMAGE_KEY, cleanFont, HOME_BITS, HOME_SECTION_NAMES, normalizeHomeOrder, replaceSettings, sanitizeSettings, saveSettings } from '../../shared/settings';
+import { BG_IMAGE_KEY, clampPaletteSpeed, cleanFont, HOME_BITS, HOME_SECTION_NAMES, normalizeHomeOrder, replaceSettings, sanitizeSettings, saveSettings } from '../../shared/settings';
 import { ACTIVITY_KEY, sanitizeActivity, type FpMessage } from '../../shared/activity';
 import { compressImage } from '../bg/background';
 import { SHADER_IDS, SHADER_NAMES } from '../bg/shaders';
@@ -38,6 +38,22 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
   const intro = toggle(s0.intro, '开场动画', (v) => save({ intro: v }));
   const reduceM = toggle(s0.reduceMotion, '减少动画', (v) => save({ reduceMotion: v }));
   const effects = toggle(s0.uiEffects, '控件动效', (v) => save({ uiEffects: v }));
+  const palSpeedIn = h('input', {
+    type: 'number', class: 'city-in palette-speed-in', min: '50', max: '200', step: '10',
+    value: String(s0.paletteSpeed), 'aria-label': '搜索框展开速度（%）', inputmode: 'numeric',
+  }) as HTMLInputElement;
+  const commitPalSpeed = () => {
+    const n = clampPaletteSpeed(Number(palSpeedIn.value));
+    palSpeedIn.value = String(n);
+    if (n !== get().paletteSpeed) void save({ paletteSpeed: n });
+  };
+  palSpeedIn.addEventListener('change', commitPalSpeed);
+  palSpeedIn.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    commitPalSpeed();
+    palSpeedIn.blur();
+  });
   const foot = toggle(s0.footprint, '足迹热力图', (v) => save({ footprint: v }));
   const wxT = toggle(s0.weather, '天气', (v) => save({ weather: v }));
   // v0.43 首页组件开关：存的是「隐藏了哪些」，界面上是「显示哪些」
@@ -448,6 +464,7 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
       row('封面悬停预览', '鼠标停留半秒后静音播放', preview),
       row('控件动效', '按钮、面板、三连和卡片过渡；背景与天气独立设置', effects),
       row('减少动画', '暂停背景、天气和悬停动画，并减少界面过渡；系统减少动态效果始终生效', reduceM),
+      row('搜索框展开速度', '点击搜索框展开命令面板的动画速度（%），50–200 之间，100 为默认；数字越大越快', palSpeedIn),
       row('其他页面重设计', '播放页、搜索页、空间、动态等，只换外观不改功能', watch),
       drawer('字体与缩放', () => { const st = get(); return [st.titleFont === 'sans' ? '无衬线标题' : '衬线标题', st.bodyFont || '', st.zoom !== 100 ? `${st.zoom}%` : ''].filter(Boolean).join(' · '); },
         block('标题字体', '页面标题和大号文字用衬线（宋体）还是无衬线（黑体）', fontS),
@@ -530,6 +547,7 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
       intro.setAttribute('aria-checked', String(s.intro));
       reduceM.setAttribute('aria-checked', String(s.reduceMotion));
       effects.setAttribute('aria-checked', String(s.uiEffects));
+      if (!palSpeedIn.matches(':focus')) palSpeedIn.value = String(s.paletteSpeed);
       appT.setAttribute('aria-checked', String(s.appFeed));
       rankT.setAttribute('aria-checked', String(s.rerank));
       sponsorT.setAttribute('aria-checked', String(s.sponsorSkip));

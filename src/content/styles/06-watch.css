@@ -5,13 +5,9 @@
 /* ── 液态玻璃顶栏（21st「Apple Liquid glass switcher」原生移植）──
    顶栏本身不再铺底色/模糊（父级 backdrop-filter 会挡住子级的折射），
    搜索框和快捷入口胶囊各自是一块玻璃，直接折射滚过下面的内容。 */
-.app { --c-glass: #bbbbbc; --c-light: #fff; --c-dark: #000; --reflex-light: 1; --reflex-dark: 1; --glass-sat: 150%; }
-.app[data-theme="dark"] { --reflex-light: .1; --reflex-dark: 1.3; --c-glass: #8e8e92; }
-.lg, .et, .search {
-  /* 原版是 #bbbbbc 12%；B 站封面花，叠一层画布色保证图标和字可读 */
-  background-color: color-mix(in srgb, var(--c-glass) 12%, color-mix(in srgb, var(--canvas) 34%, transparent));
-  backdrop-filter: blur(8px) url(#lg-bar) saturate(var(--glass-sat));
-  box-shadow:
+.app {
+  --c-glass: #bbbbbc; --c-light: #fff; --c-dark: #000; --reflex-light: 1; --reflex-dark: 1; --glass-sat: 150%;
+  --lg-rim:
     inset 0 0 0 1px color-mix(in srgb, var(--c-light) calc(var(--reflex-light) * 10%), transparent),
     inset 1.8px 3px 0 -2px color-mix(in srgb, var(--c-light) calc(var(--reflex-light) * 90%), transparent),
     inset -2px -2px 0 -2px color-mix(in srgb, var(--c-light) calc(var(--reflex-light) * 80%), transparent),
@@ -22,6 +18,13 @@
     inset 2px -6.5px 1px -4px color-mix(in srgb, var(--c-dark) calc(var(--reflex-dark) * 10%), transparent),
     0 1px 5px 0 color-mix(in srgb, var(--c-dark) calc(var(--reflex-dark) * 10%), transparent),
     0 6px 16px 0 color-mix(in srgb, var(--c-dark) calc(var(--reflex-dark) * 8%), transparent);
+}
+.app[data-theme="dark"] { --reflex-light: .1; --reflex-dark: 1.3; --c-glass: #8e8e92; }
+.lg, .et, .search {
+  /* 原版是 #bbbbbc 12%；B 站封面花，叠一层画布色保证图标和字可读 */
+  background-color: color-mix(in srgb, var(--c-glass) 12%, color-mix(in srgb, var(--canvas) 34%, transparent));
+  backdrop-filter: blur(8px) url(#lg-bar) saturate(var(--glass-sat));
+  box-shadow: var(--lg-rim);
   border: 0;
   transition: background-color .4s cubic-bezier(1, 0, .4, 1), box-shadow .4s cubic-bezier(1, 0, .4, 1);
 }

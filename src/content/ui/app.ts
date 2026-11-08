@@ -220,9 +220,9 @@ export class MarginApp {
       { id: 'message', title: '消息', cat: '跳转', icon: ICONS.message, run: () => openBili('https://message.bilibili.com/') },
       { id: 'history', title: '观看历史', cat: '跳转', icon: ICONS.history, run: () => openBili('https://www.bilibili.com/history') },
       { id: 'off', title: '本次回到 B 站原版', cat: '操作', icon: ICONS.exit, keys: ['原版', '关闭'], run: () => { sessionStorage.setItem('margin:off', '1'); location.reload(); } },
-    ]);
+    ], (on) => this.bg.hold('palette', on));
     const cm = createContextMenu();
-    const head = createHeader({ onTheme: () => this.toggleTheme(), onSearch: (q) => palette.open(q), onSettings: () => this.panel.sheet.open(), msgRemind: () => this.settings.msgRemind, filter: this.filter, tabs: [
+    const head = createHeader({ onTheme: () => this.toggleTheme(), onSearch: (q, origin) => palette.open(q, origin), onSettings: () => this.panel.sheet.open(), msgRemind: () => this.settings.msgRemind, filter: this.filter, tabs: [
       ...SITE_LINKS,
       'separator',
       { title: '收藏', icon: ICONS.fav, run: () => this.fav.open() },

@@ -6,7 +6,7 @@
 .app[data-glass="soft"] :is(.idcl-card,.cp-panel,.gf-menu,.dp) {
   backdrop-filter:blur(16px) saturate(1.1);
 }
-.app[data-glass="soft"] :is(.search,.et) {
+.app[data-glass="soft"] :is(.search,.et,.cp-panel) {
   background:color-mix(in srgb,var(--surface) 74%,transparent);
 }
 @media(prefers-reduced-transparency:reduce) {
@@ -22,6 +22,8 @@
 }
 .app[data-glass="flat"] :is(.gf-frost,.gf-shadow,.gf-back-sheen,.gf-tint,.idcl-holo) { display:none; }
 .app[data-glass="flat"] :is(.gf-front,.gf-back) { background:var(--surface);box-shadow:none; }
+/* 平面质感的描边是外阴影，形变时会被裁剪外壳切掉；把同一圈描边画在外壳上补齐可见边缘 */
+.app[data-glass="flat"] .cp.cp-clipping .cp-shell { box-shadow:var(--ring); }
 .app.margin-ui-still :not(.bg,.bg *,.wx-sky,.wx-sky *),
 .app.margin-ui-still :not(.bg,.bg *,.wx-sky,.wx-sky *)::before,
 .app.margin-ui-still :not(.bg,.bg *,.wx-sky,.wx-sky *)::after {
