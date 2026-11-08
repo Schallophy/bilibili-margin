@@ -29,6 +29,14 @@
 .hs-ph-w.out { animation: hs-ph-out .4s var(--ease-out) both; }
 @keyframes hs-ph-in { from { opacity: 0; transform: translateY(14px); filter: blur(4px); } }
 @keyframes hs-ph-out { to { opacity: 0; transform: translateY(-14px); filter: blur(4px); } }
+/* 顶栏小搜索框的热搜占位：只显示热词，切换沿用上面的动画；原生 placeholder 让位 */
+.search { position: relative; }
+.search.has-hot input::placeholder { color: transparent; }
+.search-ph { position: absolute; left: 44px; right: 46px; top: 0; bottom: 0; display: flex; align-items: center; overflow: hidden; pointer-events: none; color: var(--faint); font-size: 14px; white-space: nowrap; }
+.search-ph-ws { position: relative; flex: 1; min-width: 0; height: 100%; }
+.search-ph-w { position: absolute; inset: 0; display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-ph-w.in { animation: hs-ph-in .4s var(--ease-out) both; }
+.search-ph-w.out { animation: hs-ph-out .4s var(--ease-out) both; }
 .hs-clear { display: grid; place-items: center; flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: var(--chip, color-mix(in srgb, var(--ink) 8%, transparent)); color: var(--muted); cursor: pointer; opacity: 0; visibility: hidden; transform: scale(.6); pointer-events: none; transition: opacity .15s var(--ease-out), transform .2s var(--ease-spring, var(--ease-out)), color .15s, visibility 0s .15s; }
 .hs-clear svg { width: 14px; height: 14px; }
 .hs-clear:hover { color: var(--ink); }
@@ -72,7 +80,7 @@
 .hs-row-i[aria-selected="true"] > svg:last-child { opacity: 1; }
 .hs-go .hs-t { font-weight: 600; }
 .hs-row-i kbd { flex: none; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line); color: var(--faint); font: 500 11px/1.2 var(--mono); }
-@media (prefers-reduced-motion: reduce) { .hs-drop, .hero-search, .hs-scrim { transition: none; } .hero-search[data-open="true"] .hs-opt, .hs-ph-w.in, .hs-ph-w.out { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .hs-drop, .hero-search, .hs-scrim { transition: none; } .hero-search[data-open="true"] .hs-opt, .hs-ph-w.in, .hs-ph-w.out, .search-ph-w.in, .search-ph-w.out { animation: none; } }
 
 /* v0.11 排版：衬线大标题 + 等宽眉标 + 无衬线正文 */
 .title { font-family: var(--sans); letter-spacing: .005em; }
@@ -495,6 +503,8 @@
 /* v0.47：首页大搜索框滚出视野后，顶栏小搜索框淡入 */
 .top.no-search .search { opacity: 0; transform: translateY(-4px); transition: opacity .2s var(--ease-out), transform .2s var(--ease-out), visibility 0s .2s; }
 .top.no-search.hs-away .search { visibility: visible; pointer-events: auto; opacity: 1; transform: none; transition: opacity .2s var(--ease-out), transform .2s var(--ease-out), visibility 0s; }
+/* 顶栏搜索浮出后主搜索不再显示，但 .hs-slot 继续占住 56px + 32px，滚动回顶部时布局不跳 */
+.app.hero-away:not(.hs-open) .hero-search { visibility: hidden; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .top.no-search .search, .top.no-search.hs-away .search { transition: none; } }
 /* v0.47.1：顶栏入口可隐藏 */
 .et-btn[hidden], .et-sep[hidden] { display: none; }

@@ -27,7 +27,9 @@ import { createCommandPalette } from './command-palette';
 import { createContextMenu } from './context-menu';
 import { bindCardMenu } from './card-menu';
 import { createLaterDrawer } from './drawer';
-import { uiReducedMotion as reducedMotion } from '../motion';
+import { onMotionChange, uiReducedMotion as reducedMotion } from '../motion';
+import { every } from '../sched';
+import { hotSearch } from '../api/search';
 import { ThemeWriter } from './theme-writer';
 import css from '../styles/index';
 
@@ -179,6 +181,45 @@ export class MarginApp {
     this.bg.setFocus(noHero ? null : this.heroEl);
   }
 
+  /** 顶栏小搜索框（主搜索关闭或吸顶时露出）：占位轮播热搜，切换动画和主搜索一致 */
+  private hotPlaceholder(input: HTMLInputElement): void {
+    const box = input.parentElement!;
+    const words = h('span', { class: 'search-ph-ws' });
+    const ph = h('span', { class: 'search-ph', 'aria-hidden': 'true' }, words);
+    let names: string[] = [];
+    let i = 0;
+    let rot: (() => void) | null = null;
+    const paint = (first = false) => {
+      if (!names.length) return;
+      const prev = words.querySelector('.search-ph-w:not(.out)');
+      const next = h('span', { class: `search-ph-w${first || reducedMotion() ? '' : ' in'}` }, names[i]);
+      words.append(next);
+      if (prev) {
+        prev.classList.add('out');
+        if (reducedMotion()) prev.remove(); else setTimeout(() => prev.remove(), 420);
+      }
+    };
+    const stop = () => { rot?.(); rot = null; };
+    const start = () => {
+      stop();
+      if (reducedMotion() || !names.length) return;
+      rot = every(3200, () => {
+        if (input.value) return;
+        i = (i + 1) % names.length;
+        paint();
+      });
+    };
+    hotSearch().then((list) => {
+      names = list.slice(0, 10).map((x) => x.name);
+      if (!names.length) return;
+      box.classList.add('has-hot');
+      box.append(ph);
+      paint(true);
+      start();
+    }).catch(() => {});
+    onMotionChange(() => { if (reducedMotion()) stop(); else if (!rot) start(); });
+  }
+
   /** 按设置顺序移动同一批节点；不重建 DOM，吸顶/无限滚动/预览/事件都保留 */
   private applyOrder(value: HomeSection[]): void {
     if (!this.mainEl) return;
@@ -231,6 +272,7 @@ export class MarginApp {
     ] });
     this.sunMoon = head.sunMoon;
     this.head = head;
+    this.hotPlaceholder(head.input);
     const header = head.el;
 
     const tabs = h('div', { class: 'tabs', role: 'tablist' });
@@ -333,7 +375,10 @@ export class MarginApp {
     }, { root: this.app, rootMargin: '-72px 0px 0px 0px', threshold: 0 }).observe(barMark);
     // 大搜索框滚出视野后，顶栏的小搜索框淡入（v0.47，评论区：往下滑时搜索栏能跟着走）
     new IntersectionObserver(([e]) => {
-      head.el.classList.toggle('hs-away', !e.isIntersecting && e.boundingClientRect.top < 80);
+      const away = !e.isIntersecting && e.boundingClientRect.top < 80;
+      head.el.classList.toggle('hs-away', away);
+      // 顶栏搜索浮出时让出主搜索的画面，.hs-slot 仍占住原高度
+      this.app.classList.toggle('hero-away', away);
     }, { root: this.app, rootMargin: '-72px 0px 0px 0px', threshold: 0 }).observe(hero);
 
     new IntersectionObserver((es) => { if (!this.batchOn() && es.some((e) => e.isIntersecting)) this.load(); }, { root: this.app, rootMargin: '900px 0px' }).observe(this.sentinel);

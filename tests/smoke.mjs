@@ -196,6 +196,7 @@ for (const theme of THEMES) {
       await page.screenshot({path:join(OUT,'home-classic.png')});return miss;
     });
 
+<<<<<<< HEAD
     await feature('search-morph', async () => {
       await reset(); await seed({ intro: false, homeHide: ['search'], bg: { mode: 'off' } });
       await page.goto(HOME, { waitUntil: 'domcontentloaded' });
@@ -246,6 +247,38 @@ for (const theme of THEMES) {
       if (await cp.evaluate((e) => e.classList.contains('cp-clipping'))) miss.push('reduced motion still morphs');
       await page.keyboard.press('Escape'); await sleep(300);
       await seed({ reduceMotion: false });
+      return miss;
+    });
+
+    await feature('header-hot-search', async () => {
+      await reset();
+      await seed({ intro: false, homeHide: ['search'] });
+      await page.goto(HOME, { waitUntil: 'domcontentloaded' });
+      const input = page.locator('#margin-root .top .search input');
+      await input.waitFor();
+      const miss = [];
+      if (await page.locator('#margin-root .hero-search').evaluate((e) => getComputedStyle(e).display) !== 'none') miss.push('hero search still shown');
+      if (await page.locator('#margin-root .top .search').evaluate((e) => getComputedStyle(e).visibility) !== 'visible') miss.push('top search hidden');
+      const ph = () => page.evaluate(() => document.getElementById('margin-root').shadowRoot.querySelector('.top .search .search-ph-w:not(.out)')?.textContent ?? '');
+      await page.waitForFunction(() => {
+        const t = document.getElementById('margin-root')?.shadowRoot?.querySelector('.top .search .search-ph-w:not(.out)')?.textContent;
+        return !!t;
+      }, null, { timeout: 8000 });
+      const first = await ph();
+      if (first !== 'S16 全球总决赛') miss.push(`first hot: ${first}`);
+      const phColor = await input.evaluate((el) => getComputedStyle(el, '::placeholder').color);
+      if (!/, 0\)$/.test(phColor)) miss.push(`native placeholder not hidden: ${phColor}`);
+      await page.waitForFunction((f) => {
+        const t = document.getElementById('margin-root').shadowRoot.querySelector('.top .search .search-ph-w:not(.out)')?.textContent;
+        return t && t !== f;
+      }, first, { timeout: 6000 });
+      // 减少动画时停在第一条热搜，不再轮播
+      const settled = await ph();
+      await seed({ reduceMotion: true }); await sleep(300);
+      await sleep(3400);
+      if (await ph() !== settled) miss.push('trending rotation ignored reduced motion');
+      await seed({ reduceMotion: false });
+      await page.screenshot({ path: join(OUT, 'header-hot-search.png') });
       return miss;
     });
 
