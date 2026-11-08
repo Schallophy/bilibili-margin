@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+- Add opt-in recommendation batch navigation: each refresh requests one page, videos are split into fixed-size batches, and the toolbar's refresh slot gains previous/next arrows plus an optional refresh button. Only the active window renders and switching batches never re-requests.
+- Batch mode turns off scroll pagination; the arrows, the on-demand load at the last batch and the refresh button all replace the content in place without moving the scroll position, while the regular feed keeps its previous positioning.
+- The queue holds up to 1000 videos and a short tail is completed by the next refresh. Short batches are padded with blank cards so grid rows and page height stay stable.
+- Prefetching stays off by default; once on, it keeps one round preloaded after each initial load, refresh or arrival at preloaded content, and the last arrow still loads on demand. Rapid forward clicks wait for the in-flight preload, so its result is neither lost nor requested twice.
+
 ## [v0.6.3](https://github.com/jiuyang5354/bilibili-margin/releases/tag/v0.60.3) · Pending release
 
 - Restore livestream reservation cards in followed feeds, creator spaces, and reposts, including titles, schedules, reservation counts, and server-provided button states (#98).

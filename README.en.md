@@ -71,7 +71,7 @@ Other Chromium browsers (Brave, Opera, Vivaldi, Arc and others) can follow the C
 
 | Area | What it offers |
 | --- | --- |
-| Home and search | Personalized recommendations, popular videos, infinite scrolling, refresh, and filters for keywords, uploaders, view counts and duration. |
+| Home and search | Personalized recommendations, popular videos, infinite scrolling, refresh, optional batch navigation, and filters for keywords, uploaders, view counts and duration. |
 | Native playback | Redesigned titles, uploader cards, episode lists and recommendations, while retaining the native player, danmaku, comments, quality and fullscreen controls. |
 | Danmaku airborne | Optional, off by default: danmaku that mention a time (such as "03:20" or "jump to 2:15") get an underline. Click to seek, with undo available. Parsed entirely on your device, with no network requests. |
 | Favorites and watch later | Glass folder cards, watch-later lists, viewing progress and video context menus. |

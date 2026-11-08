@@ -5,6 +5,7 @@ import { compressImage } from '../bg/background';
 import { SHADER_IDS, SHADER_NAMES } from '../bg/shaders';
 import { cachedThumb, shaderThumb } from '../bg/program';
 import { block, chipInput, pillToggles, rangeSlider, row, segmented, stepSlider, toast, toggle } from './controls';
+import { clampBatchSize } from '../../shared/batch';
 import { fmtCount, h, icon, ICONS } from './dom';
 import { createSheet, type Sheet } from './sheet';
 import { SITE_LINKS } from './header';
@@ -215,6 +216,30 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
   const treeT = toggle(s0.replyTree, '楼中楼对话树', (v) => save({ replyTree: v }));
   const msgT = toggle(s0.msgRemind, '消息提醒', (v) => save({ msgRemind: v }));
   const tabRefreshT = toggle(s0.tabRefresh, '点击分类标签刷新列表', (v) => save({ tabRefresh: v }));
+  // 推荐批次导航（v0.53）：占据分类栏原来的「换一批」位置；关闭后恢复原来的单级「上一批」
+  const batchSizeIn = h('input', {
+    type: 'number', class: 'city-in batch-size-in', min: '1', max: '100', step: '1',
+    value: String(s0.batchSize), 'aria-label': '每批视频数', inputmode: 'numeric',
+  }) as HTMLInputElement;
+  const commitBatchSize = () => {
+    const n = clampBatchSize(Number(batchSizeIn.value));
+    batchSizeIn.value = String(n);
+    if (n !== get().batchSize) void save({ batchSize: n });
+  };
+  batchSizeIn.addEventListener('change', commitBatchSize);
+  batchSizeIn.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    commitBatchSize();
+    batchSizeIn.blur();
+  });
+  const batchRefreshT = toggle(s0.batchRefresh, '批次条刷新按钮', (v) => save({ batchRefresh: v }));
+  const batchPrefetchT = toggle(s0.batchPrefetch, '预载下一轮', (v) => save({ batchPrefetch: v }));
+  const batchOpts = h('div', { class: 'batch-opts', hidden: !s0.batchNav },
+    row('每批视频数', '一次「换一批」约 24 条，按此切成多批；1–100 之间', batchSizeIn),
+    row('预载下一轮', '始终保留一轮预载：加载、换一批或翻到预载内容后自动补下一轮；关闭则到末批点右箭头才请求', batchPrefetchT),
+    row('显示刷新按钮', '关闭后批次条只保留左右箭头；刷新键可在任意批次直接追加新内容', batchRefreshT));
+  const batchNavT = toggle(s0.batchNav, '批次导航', (v) => { batchOpts.hidden = !v; void save({ batchNav: v }); });
 
   const kw = chipInput(s0.filters.keywords, '输入关键词，回车添加；/正则/ 也可以', (v) => save({ filters: { ...get().filters, keywords: v } }));
   const ups = chipInput(s0.filters.ups, 'UP 主昵称或 MID', (v) => save({ filters: { ...get().filters, ups: v } }));
@@ -457,6 +482,8 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
       row('搜索框', '关掉后用顶栏的小搜索框', searchT),
       row('日期栏', '推荐上方的日期和「For You」', dateT),
       row('换一批按钮', null, refreshT),
+      row('批次导航', '每次「换一批」只加载一页，底部左右箭头切换批次；开启后推荐页不再随滚动自动补页', batchNavT),
+      batchOpts,
       row('点击分类标签刷新列表', null, tabRefreshT),
       row('足迹热力图', '关掉只是不显示，足迹照样在本机记录', foot),
       row('天气', '关掉后不再请求天气和城市定位', wxT),
@@ -515,6 +542,11 @@ function buildSettingsPanel(sheet: Sheet, get: () => Settings, currentShader: ()
       dateT.setAttribute('aria-checked', String(!s.homeHide.includes('date')));
       refreshT.setAttribute('aria-checked', String(!s.homeHide.includes('refresh')));
       tabRefreshT.setAttribute('aria-checked', String(s.tabRefresh));
+      batchNavT.setAttribute('aria-checked', String(s.batchNav));
+      batchRefreshT.setAttribute('aria-checked', String(s.batchRefresh));
+      batchPrefetchT.setAttribute('aria-checked', String(s.batchPrefetch));
+      if (!batchSizeIn.matches(':focus')) batchSizeIn.value = String(s.batchSize);
+      batchOpts.hidden = !s.batchNav;
       cardBits.set(shownCard(s.homeHide));
       order = normalizeHomeOrder(s.homeOrder);
       paintOrder();

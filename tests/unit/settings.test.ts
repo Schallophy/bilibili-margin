@@ -54,6 +54,19 @@ describe('settings 迁移（merge / loadSettings）', () => {
     expect((await loadSettings()).danmakuAirborne).toBe(true);
   });
 
+  it('批次导航默认关闭、每批 12 条，条数导入时收敛到合法范围', async () => {
+    expect(DEFAULTS.batchNav).toBe(false);
+    expect(DEFAULTS.batchSize).toBe(12);
+    expect(DEFAULTS.batchRefresh).toBe(true);
+    expect(DEFAULTS.batchPrefetch).toBe(false);
+    expect(sanitizeSettings({ batchPrefetch: true })?.batchPrefetch).toBe(true);
+    expect(sanitizeSettings({ batchPrefetch: 'true' })?.batchPrefetch).toBe(false);
+    expect(sanitizeSettings({ batchNav: 'true' })?.batchNav).toBe(false);
+    expect(sanitizeSettings({ batchNav: true })?.batchNav).toBe(true);
+    expect(sanitizeSettings({ batchSize: 1 })?.batchSize).toBe(1);
+    expect(sanitizeSettings({ batchSize: 999 })?.batchSize).toBe(100);
+  });
+
   it('撤回的播放页评论布局选项不再导入或作为默认设置', () => {
     expect(DEFAULTS).not.toHaveProperty('watchComments');
     expect(DEFAULTS).not.toHaveProperty('commentInput');
