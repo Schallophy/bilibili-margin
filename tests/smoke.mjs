@@ -196,7 +196,6 @@ for (const theme of THEMES) {
       await page.screenshot({path:join(OUT,'home-classic.png')});return miss;
     });
 
-<<<<<<< HEAD
     await feature('search-morph', async () => {
       await reset(); await seed({ intro: false, homeHide: ['search'], bg: { mode: 'off' } });
       await page.goto(HOME, { waitUntil: 'domcontentloaded' });
@@ -537,6 +536,10 @@ for (const theme of THEMES) {
       await sleep(500);
       const state = await page.evaluate(() => { clearInterval(window.marginLinkTimer); return window.marginLinkProbe; });
       const miss = [];
+      const tagH = await page.locator('#margin-root .idcl-back .idcl-connect > span').evaluate((e) => e.getBoundingClientRect().height);
+      if (tagH > 26) miss.push(`quick entries label wrapped (${tagH.toFixed(1)}px)`);
+      if (await page.locator('#margin-root .idcl-holo').count()) miss.push('holographic strip still rendered');
+      await page.screenshot({ path: join(OUT, 'id-card-back.png') });
       if (state.grabbing) miss.push(`interactive link inherited drag cursor in ${state.grabbing}/${state.frames} samples`);
       if (state.shift > 1) miss.push(`interactive link moves under pointer by ${state.shift.toFixed(2)}px`);
       return miss;

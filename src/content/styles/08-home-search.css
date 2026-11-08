@@ -271,12 +271,6 @@
 .idcl-stage.idcl-lite .idcl-face::after { mix-blend-mode: normal; background: radial-gradient(circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,.28), transparent 40%); }
 .idcl-front { background: linear-gradient(165deg, var(--idcl-card), var(--idcl-card-2)); align-items: stretch; }
 .idcl-back { background: linear-gradient(165deg, var(--idcl-card-2), var(--idcl-card)); transform: rotateY(180deg); }
-.idcl-holo { position: absolute; top: 14px; bottom: 14px; right: 5px; width: 6px; border-radius: 6px;
-  background: repeating-linear-gradient(125deg, #eef1f7 0%, #cfd6e4 10%, #b9c2d6 20%, #e7ebf3 30%, #eef1f7 40%); background-size: 220% 220%;
-  animation: idcl-foil 7s linear infinite; box-shadow: inset 0 0 0 1px rgba(0,0,0,.1), 0 0 6px rgba(255,255,255,.3); }
-@keyframes idcl-foil { to { background-position: 220% 0%; } }
-/* 镭射条只在鼠标停在卡上时流动；静止时一直重绘背景会让整张 3D 卡片每帧重新栅格化 */
-.idcl-card:not(.idcl-hovering) .idcl-holo, .idcl-stage.idcl-lite .idcl-holo { animation-play-state: paused; }
 .idcl-hole { width: 32px; height: 9px; background: var(--idcl-card-ink); border-radius: 6px; margin: 0 auto 10px; flex-shrink: 0; opacity: .85; }
 .idcl-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .idcl-brand { display: flex; align-items: flex-start; gap: 6px; }
@@ -337,10 +331,10 @@
 .idcl-link svg { width: 14px; height: 14px; flex: none; color: var(--idcl-card-soft); fill: none; stroke: currentColor; stroke-width: 1.8; }
 .idcl-link:hover, .idcl-link:focus-visible { border-color: var(--idcl-accent); color: var(--idcl-accent); transform: translateY(-1px); }
 .idcl-link:hover svg { color: inherit; }
-.idcl-connect { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 14px; padding-top: 10px; border-top: 1px dashed var(--idcl-card-line); }
-.idcl-connect > span { font-size: 10px; letter-spacing: .08em; color: var(--idcl-card-soft); }
-.idcl-connect-icons { display: flex; gap: 6px; }
-.idcl-connect-icons a { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid var(--idcl-card-line); color: var(--idcl-card-soft); transition: border-color 150ms var(--ease-out), color 150ms var(--ease-out), transform 150ms var(--ease-out); }
+.idcl-connect { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: nowrap; margin: 12px 0 14px; padding-top: 10px; border-top: 1px dashed var(--idcl-card-line); }
+.idcl-connect > span { flex: none; white-space: nowrap; font-size: 10px; letter-spacing: .08em; color: var(--idcl-card-soft); }
+.idcl-connect-icons { display: flex; gap: 4px; min-width: 0; }
+.idcl-connect-icons a { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid var(--idcl-card-line); color: var(--idcl-card-soft); transition: border-color 150ms var(--ease-out), color 150ms var(--ease-out), transform 150ms var(--ease-out); }
 .idcl-connect-icons a:hover { border-color: var(--idcl-accent); color: var(--idcl-accent); transform: translateY(-1px); }
 .idcl-connect-icons svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .idcl-sigline { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--idcl-card-line); margin-top: 4px; padding-top: 6px; }
@@ -354,7 +348,7 @@
 .idcl-sig small { display: block; font-family: var(--idcl-font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--idcl-card-soft); border-top: 1px solid var(--idcl-card-line); margin-top: 4px; padding-top: 4px; }
 .idcl-hint { position: absolute; left: 50%; top: calc(100% + 12px); transform: translateX(-50%); padding: 6px 12px; border-radius: 999px; background: rgba(10,12,16,.72); color: #f3f0e9; font: 11px/1 var(--sans); letter-spacing: .04em; white-space: nowrap; pointer-events: none; transition: opacity .4s ease; }
 .idcl-hint.idcl-hint-hidden { opacity: 0; }
-@media (prefers-reduced-motion: reduce) { .idcl-holo { animation: none; } .idcl-face::after { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .idcl-face::after { transition: none; } }
 
 /* v0.31.2 无障碍：用 all: unset 重置过的控件补回聚焦环（不可见时用 visibility 移出 Tab 顺序，见 .hs-clear） */
 :is(.idcl-link, .idcl-out, .fm-bar, .fm-item, .gf-menu-item, .wx-city):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

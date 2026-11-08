@@ -10,6 +10,8 @@
 - Prefetching stays off by default; once on, it keeps one round preloaded after each initial load, refresh or arrival at preloaded content, and the last arrow still loads on demand. Rapid forward clicks wait for the in-flight preload, so its result is neither lost nor requested twice.
 - Morph the home header search into the command palette in place, with the panel surface and input row matching the search box. Expansion, closing and interruption reverse from the current size, and a new expansion speed setting ranges from 50% to 200% (default 100%).
 - When the Home search box is turned off, the compact toolbar search cycles through Bilibili trending searches with the same transition as the main search; the same applies when it appears while scrolling.
+- Remove the holographic strip on the right edge of the avatar ID card so it is no longer mistaken for a scrollbar.
+- Fix the "快捷入口" label on the back of the avatar ID card wrapping onto two lines; tighten the icon gap and size so the label stays on one line.
 
 ## [v0.6.3](https://github.com/jiuyang5354/bilibili-margin/releases/tag/v0.60.3) · Pending release
 
