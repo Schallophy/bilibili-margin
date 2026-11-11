@@ -35,8 +35,9 @@ export function createCommandPalette(commands: Command[]): Palette {
       h('span', { class: 'cp-hint' }, h('span', {}, '选择'), h('kbd', {}, '↑'), h('kbd', {}, '↓'), h('b', {}, '|'), h('span', {}, '切换搜索 / 命令'), h('kbd', {}, 'Tab'), h('b', {}, '|'), h('span', {}, '执行'), h('kbd', {}, '↵')),
     ),
   );
-  // 形变期间贴着裁剪边缘显示搜索框里的 / 键；完全展开后才换成面板自己的 Esc
-  const morphKbd = h('kbd', { class: 'cp-morph-kbd', 'aria-hidden': 'true' }, '/');
+  // 形变期间贴着裁剪边缘显示按键：展开时是 Esc（搜索框的 / 当帧就消失了），
+  // 收回时反过来从第一帧换回 /，结束时正好由搜索框自己的键原位接替
+  const morphKbd = h('kbd', { class: 'cp-morph-kbd', 'aria-hidden': 'true' }, 'Esc');
   const shell = h('div', { class: 'cp-shell' }, panel, morphKbd);
   const el = h('div', { class: 'cp', 'data-open': 'false', hidden: '' }, h('div', { class: 'cp-scrim' }), shell);
   acceptTextDrop(panel.querySelector<HTMLElement>('.cp-input')!, (text) => {
@@ -236,6 +237,7 @@ export function createCommandPalette(commands: Command[]): Palette {
     const animate = morph && !reducedMotion();
     morphOrigin = morph ? origin! : null;
     el.hidden = false;
+    morphKbd.textContent = 'Esc';
     el.style.setProperty('--cp-k', String(animK));
     // 顶栏搜索框可能正在轮播热搜；形变当帧沿用同一句话，避免点击瞬间文字跳变
     const word = origin?.querySelector('.search-ph-w:not(.out)')?.textContent?.trim();
@@ -289,6 +291,7 @@ export function createCommandPalette(commands: Command[]): Palette {
     window.clearTimeout(hideTimer);
     // 反向裁剪回搜索框；没有来源或减少动画时直接淡出
     if (to && onScreen(to) && !reducedMotion()) {
+      morphKbd.textContent = '/';
       el.classList.add('cp-clipping');
       shell.style.transition = 'none';
       setBox(from, fromRadius, fromShape);

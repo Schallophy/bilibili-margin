@@ -85,14 +85,14 @@
 .cp-input input::placeholder { color: color-mix(in srgb, var(--ink) 45%, transparent); }
 .cp-input input.hot-ph::placeholder { color: var(--faint); }
 .cp kbd { font: 11px/1 var(--mono); padding: 4px 6px; min-width: 20px; text-align: center; border-radius: 6px; border: 1px solid var(--line); background: var(--chip); color: var(--muted); }
-/* 顶部按键与搜索框的 kbd 同款，形变期间才出现，贴着裁剪边缘跟着宽度走 */
+/* 顶部按键与搜索框的 kbd 同款，形变期间贴着裁剪右缘，竖直锁在输入行 */
 .cp-input kbd, .cp kbd.cp-morph-kbd {
   font: 11px/1 var(--mono); padding: 4px 8px; min-width: 0; text-align: center; border-radius: 6px;
   border: 1px solid color-mix(in srgb, var(--ink) 16%, transparent); background: none; color: var(--faint);
 }
 .cp-morph-kbd { display: none; }
 .cp.cp-clipping .cp-morph-kbd {
-  display: block; position: absolute; z-index: 3; right: 12px; top: 50%; transform: translateY(-50%);
+  display: block; position: absolute; z-index: 3; right: 12px; top: 21px; transform: translateY(-50%);
   pointer-events: none;
 }
 .cp.cp-clipping .cp-input kbd { display: none; }

@@ -59,6 +59,10 @@ try {
    });
    await page.locator('#margin-watch-top .top .search input').click();
    await page.waitForFunction(()=>document.querySelector('#margin-watch-top').shadowRoot.querySelector('.cp').classList.contains('cp-clipping'));
+   const keys=await page.evaluate(()=>{const root=document.querySelector('#margin-watch-top').shadowRoot;const m=root.querySelector('.cp-morph-kbd'),p=root.querySelector('.cp-input kbd');return{text:m.textContent,shown:getComputedStyle(m).display,panel:getComputedStyle(p).display};});
+   assert.equal(keys.text,'Esc');
+   assert.equal(keys.shown,'block');
+   assert.equal(keys.panel,'none');
    const opening=await sample();
    assert.ok(opening.count>0,'morph transitions exist');
    assert.ok(Math.abs(opening.start.radius-origin.radius)<.6,`open start ${opening.start.radius} vs ${origin.radius}`);
@@ -68,6 +72,10 @@ try {
    await page.waitForFunction(()=>!document.querySelector('#margin-watch-top').shadowRoot.querySelector('.cp').classList.contains('cp-clipping'));
    await page.keyboard.press('Escape');
    await page.waitForFunction(()=>document.querySelector('#margin-watch-top').shadowRoot.querySelector('.cp').classList.contains('cp-clipping'));
+   const closeKeys=await page.evaluate(()=>{const root=document.querySelector('#margin-watch-top').shadowRoot;const m=root.querySelector('.cp-morph-kbd'),p=root.querySelector('.cp-input kbd');return{text:m.textContent,shown:getComputedStyle(m).display,panel:getComputedStyle(p).display};});
+   assert.equal(closeKeys.text,'/');
+   assert.equal(closeKeys.shown,'block');
+   assert.equal(closeKeys.panel,'none');
    const closing=await sample();
    assert.ok(Math.abs(closing.start.radius-panel.radius)<.6);
    assert.equal(closing.start.shape,panel.shape);
