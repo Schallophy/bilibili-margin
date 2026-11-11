@@ -39,6 +39,7 @@ try {
    await seed({searchStyle:'new'});
    assert.equal(await page.locator(`${host} .app`).evaluate(el=>el.classList.contains('hs-open')),false);
    const word=page.locator(`${host} .search-ph-w:not(.out)`); await word.waitFor(); const first=await word.textContent();
+   assert.equal(await input.locator('input').evaluate(el=>getComputedStyle(el,'::placeholder').color),'rgba(0, 0, 0, 0)');
    await page.waitForFunction(({host,first})=>document.querySelector(host).shadowRoot.querySelector('.search-ph-w:not(.out)')?.textContent!==first,{host,first});
    assert.equal(await page.locator(`${host} svg[data-margin-glass-filters]`).evaluate(el=>el.parentNode===el.getRootNode()),true);
    results.push(`${name} classic search, new panel and live switching`);

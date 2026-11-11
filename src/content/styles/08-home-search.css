@@ -31,7 +31,7 @@
 @keyframes hs-ph-out { to { opacity: 0; transform: translateY(-14px); filter: blur(4px); } }
 /* 顶栏小搜索框的热搜占位：只显示热词，切换沿用上面的动画；原生 placeholder 让位 */
 .search { position: relative; }
-.search.has-hot input::placeholder { color: transparent; }
+.top .search.has-hot input::placeholder { color: transparent; }
 .search-ph { position: absolute; left: 44px; right: 46px; top: 0; bottom: 0; display: flex; align-items: center; overflow: hidden; pointer-events: none; color: var(--faint); font-size: 14px; white-space: nowrap; }
 .search-ph-ws { position: relative; flex: 1; min-width: 0; height: 100%; }
 .search-ph-w { position: absolute; inset: 0; display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
