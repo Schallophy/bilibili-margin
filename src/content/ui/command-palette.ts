@@ -197,13 +197,20 @@ export function createCommandPalette(commands: Command[]): Palette {
 
   const rect = (el: Element): DOMRect => el.getBoundingClientRect();
   const onScreen = (r: DOMRect) => r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight;
-  function setBox(r: DOMRect, radius: string): void {
+  /** 胶囊的 999px 计算值按短边夹取；直角档保留 0，不能再拿 height / 2 猜起点 */
+  function usedRadius(el: Element, r: DOMRect): string {
+    const css = parseFloat(getComputedStyle(el).borderTopLeftRadius);
+    const cap = Math.min(r.width, r.height) / 2;
+    return `${Math.min(Number.isFinite(css) ? css : cap, cap)}px`;
+  }
+  const cornerShape = (el: Element) => getComputedStyle(el).getPropertyValue('corner-shape').trim() || 'round';
+  function setBox(r: DOMRect, radius: string, shape: string): void {
     shell.style.left = `${r.left}px`;
     shell.style.top = `${r.top}px`;
     shell.style.width = `${r.width}px`;
     shell.style.height = `${r.height}px`;
     shell.style.borderRadius = radius;
-    shell.style.setProperty('corner-shape', radius.includes('%') || parseFloat(radius) >= 99 ? 'round' : 'squircle');
+    shell.style.setProperty('corner-shape', shape);
   }
   function cleanupMorph(): void {
     cancelAnimationFrame(openFrame);
@@ -219,6 +226,7 @@ export function createCommandPalette(commands: Command[]): Palette {
     const reversing = !el.hidden && el.classList.contains('cp-clipping');
     const current = reversing ? rect(shell) : null;
     const currentRadius = reversing ? getComputedStyle(shell).borderRadius : '';
+    const currentShape = reversing ? cornerShape(shell) : '';
     origin ??= reversing ? morphOrigin ?? undefined : undefined;
     cleanupMorph();
     lastFocus = (el.getRootNode() as ShadowRoot).activeElement ?? document.activeElement;
@@ -237,13 +245,16 @@ export function createCommandPalette(commands: Command[]): Palette {
     render();
     // 外壳落位与原点隐藏放在同一个任务里：点击后的第一帧就是裁剪到搜索框大小的面板
     let to: DOMRect | null = null;
+    let toRadius = '', toShape = '';
     if (animate) {
       el.classList.add('cp-measuring');
       to = rect(panel);
+      toRadius = getComputedStyle(panel).borderTopLeftRadius;
+      toShape = cornerShape(panel);
       el.classList.remove('cp-measuring');
       el.classList.add('cp-clipping');
       shell.style.transition = 'none';
-      setBox(current ?? from!, currentRadius || `${from!.height / 2}px`);
+      setBox(current ?? from!, currentRadius || usedRadius(origin!, from!), currentShape || cornerShape(origin!));
       void shell.offsetWidth;
       shell.style.removeProperty('transition');
     }
@@ -251,7 +262,7 @@ export function createCommandPalette(commands: Command[]): Palette {
     el.dataset.open = 'true';
     openFrame = requestAnimationFrame(() => {
       if (to) {
-        setBox(to, '16px');
+        setBox(to, toRadius, toShape);
         morphTimer = window.setTimeout(() => {
           el.classList.remove('cp-clipping');
           shell.removeAttribute('style');
@@ -269,7 +280,8 @@ export function createCommandPalette(commands: Command[]): Palette {
     // 展开途中也要能反向：从外壳当前所在的位置收回，而不是跳回全尺寸再淡出
     const clipping = el.classList.contains('cp-clipping');
     const from = clipping ? rect(shell) : rect(panel);
-    const fromRadius = clipping ? getComputedStyle(shell).borderRadius : '16px';
+    const fromRadius = clipping ? getComputedStyle(shell).borderTopLeftRadius : getComputedStyle(panel).borderTopLeftRadius;
+    const fromShape = clipping ? cornerShape(shell) : cornerShape(panel);
     const to = morphOrigin?.isConnected ? rect(morphOrigin) : null;
     el.dataset.open = 'false';
     ctrl?.abort();
@@ -279,10 +291,10 @@ export function createCommandPalette(commands: Command[]): Palette {
     if (to && onScreen(to) && !reducedMotion()) {
       el.classList.add('cp-clipping');
       shell.style.transition = 'none';
-      setBox(from, fromRadius);
+      setBox(from, fromRadius, fromShape);
       void shell.offsetWidth;
       shell.style.removeProperty('transition');
-      setBox(to, `${to.height / 2}px`);
+      setBox(to, usedRadius(morphOrigin!, to), cornerShape(morphOrigin!));
       // 收到搜索框尺寸后整块一次换回原控件。提前露出搜索框会让模糊的面板压在它上面，
       // 淡出过程中出现一下发虚；两端材质和文字已经对齐，直接切换看不出接缝
       hideTimer = window.setTimeout(() => { el.hidden = true; cleanupMorph(); }, 300 * animK);

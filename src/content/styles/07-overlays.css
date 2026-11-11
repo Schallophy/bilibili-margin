@@ -61,9 +61,10 @@
 .cp.cp-clipping .cp-shell {
   display: block; position: fixed; z-index: 2; overflow: clip; pointer-events: none;
   will-change: left, top, width, height;
+  /* 圆角用 ease-in-out 后程再收，前段先保留搜索框的胶囊轮廓 */
   transition: left calc(340ms * var(--cp-k, 1)) var(--ease-out), top calc(340ms * var(--cp-k, 1)) var(--ease-out),
     width calc(340ms * var(--cp-k, 1)) var(--ease-out), height calc(340ms * var(--cp-k, 1)) var(--ease-out),
-    border-radius calc(280ms * var(--cp-k, 1)) var(--ease-out), corner-shape calc(280ms * var(--cp-k, 1)) var(--ease-out);
+    border-radius calc(340ms * var(--cp-k, 1)) cubic-bezier(.65, 0, .35, 1), corner-shape calc(340ms * var(--cp-k, 1)) cubic-bezier(.65, 0, .35, 1);
 }
 .cp.cp-clipping .cp-panel {
   position: absolute; left: 0; top: 0; pointer-events: auto;
